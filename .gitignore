@@ -1,0 +1,37 @@
+# Logs
+*.log
+
+# PowerShell artifacts
+*.ps1xml
+
+# Test results
+TestResults/
+*.trx
+coverage.xml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build artifacts
+*.nupkg
+publish/
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+
+# Old/backup files
+*.bak
+*.old
+CassielUI.psd1
+_prerelease/

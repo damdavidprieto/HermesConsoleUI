@@ -1,0 +1,20 @@
+{
+    "Menu": {
+        "ExitPrompt": "(0 para salir)",
+        "SelectPrompt": "Selecciona una opción",
+        "InvalidOption": "Opción inválida. Intenta de nuevo.",
+        "PressEnter": "Presiona Enter para continuar..."
+    },
+    "Confirmation": {
+        "Prompt": "(S/N)"
+    },
+    "Table": {
+        "NoData": "(No hay datos para mostrar)"
+    },
+    "MultiChoice": {
+        "Prompt": "Seleccione opciones (separadas por coma)"
+    },
+    "Input": {
+        "Prompt": "[?]"
+    }
+}

@@ -1,0 +1,101 @@
+{
+    "UILibrary": {
+        "Version": "2.0.1",
+        "ColorScheme": {
+            "Default": {
+                "Primary": "Cyan",
+                "Secondary": "Yellow",
+                "Success": "Green",
+                "Warning": "Yellow",
+                "Error": "Red",
+                "Info": "Cyan",
+                "Muted": "Gray",
+                "Highlight": "White"
+            },
+            "Cyberpunk": {
+                "Primary": "Magenta",
+                "Secondary": "Cyan",
+                "Success": "Green",
+                "Warning": "Yellow",
+                "Error": "Red",
+                "Info": "Cyan",
+                "Muted": "DarkGray",
+                "Highlight": "White"
+            },
+            "Classic": {
+                "Primary": "Blue",
+                "Secondary": "Yellow",
+                "Success": "Green",
+                "Warning": "Yellow",
+                "Error": "Red",
+                "Info": "White",
+                "Muted": "Gray",
+                "Highlight": "White"
+            },
+            "Monochrome": {
+                "Primary": "White",
+                "Secondary": "Gray",
+                "Success": "White",
+                "Warning": "Gray",
+                "Error": "White",
+                "Info": "Gray",
+                "Muted": "DarkGray",
+                "Highlight": "White"
+            }
+        },
+        "ActiveTheme": "Default",
+        "Components": {
+            "Title": {
+                "DefaultColor": "Cyan",
+                "MinWidth": 60
+            },
+            "Header": {
+                "DefaultColor": "Yellow",
+                "Prefix": ">>> "
+            },
+            "Status": {
+                "Icons": {
+                    "Success": "[+]",
+                    "Warning": "[!]",
+                    "Error": "[x]",
+                    "Info": "[*]"
+                }
+            },
+            "Box": {
+                "DefaultColor": "Cyan",
+                "BorderStyle": "ASCII"
+            },
+            "Chart": {
+                "DefaultColor": "Green",
+                "DefaultWidth": 20,
+                "FilledChar": "#",
+                "EmptyChar": "."
+            },
+            "Tree": {
+                "UseUnicode": true,
+                "Chars": {
+                    "Branch": "├──",
+                    "Leaf": "└──",
+                    "Pipe": "│  ",
+                    "Space": "   "
+                }
+            },
+            "Table": {
+                "DefaultColumnWidth": 20,
+                "MaxColumnWidth": 80,
+                "HeaderColor": "Yellow",
+                "SeparatorColor": "DarkGray"
+            },
+            "Menu": {
+                "DefaultColor": "Cyan",
+                "OptionColor": "Gray",
+                "Width": 60
+            },
+            "Progress": {
+                "DefaultColor": "Cyan",
+                "CompleteColor": "Green",
+                "Width": 30
+            }
+        }
+    }
+}
