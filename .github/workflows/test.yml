@@ -1,0 +1,55 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Run Pester Tests
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Display PowerShell version
+        shell: powershell
+        run: $PSVersionTable
+      
+      - name: Install Pester
+        shell: powershell
+        run: |
+          Install-Module -Name Pester -Force -SkipPublisherCheck -Scope CurrentUser
+          Import-Module Pester
+      
+      - name: Run Pester tests
+        shell: powershell
+        run: |
+          $config = New-PesterConfiguration
+          $config.Run.Path = './tests'
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputPath = 'TestResults.xml'
+          $config.TestResult.OutputFormat = 'NUnitXml'
+          $config.CodeCoverage.Enabled = $true
+          $config.CodeCoverage.Path = './modules/*.psm1', './src/**/*.ps1', './PSConsoleUI.psm1'
+          $config.Output.Verbosity = 'Detailed'
+          
+          Invoke-Pester -Configuration $config
+      
+      - name: Publish test results
+        uses: EnricoMi/publish-unit-test-result-action/composite@v2
+        if: always()
+        with:
+          files: TestResults.xml
+          check_name: 'Test Results'
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        if: always()
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-psconsoleui

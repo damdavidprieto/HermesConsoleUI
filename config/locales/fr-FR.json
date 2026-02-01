@@ -1,0 +1,20 @@
+{
+    "Menu": {
+        "ExitPrompt": "(0 pour quitter)",
+        "SelectPrompt": "Sélectionnez une option",
+        "InvalidOption": "Option invalide. Réessayez.",
+        "PressEnter": "Appuyez sur Entrée pour continuer..."
+    },
+    "Confirmation": {
+        "Prompt": "(O/N)"
+    },
+    "Table": {
+        "NoData": "(Aucune donnée à afficher)"
+    },
+    "MultiChoice": {
+        "Prompt": "Sélectionnez les options (séparées par une virgule)"
+    },
+    "Input": {
+        "Prompt": "[?]"
+    }
+}
