@@ -6,7 +6,7 @@
     <authors>HermesConsoleUI Project</authors>
     <owners>Open Source</owners>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <licenseUrl>https://github.com/damdavidprieto/HermesConsoleUI/blob/master/LICENSE</licenseUrl>
+    <licenseUrl>https://github.com/damdavidprieto/HermesConsoleUI/blob/main/LICENSE</licenseUrl>
     <projectUrl>https://github.com/damdavidprieto/HermesConsoleUI</projectUrl>
     <description>Professional PowerShell Console UI Framework - A comprehensive, zero-dependency toolkit for building beautiful terminal applications. Includes 40 functions (11 text, 7 visual, 10 interactive, 12 core) with full theme support, internationalization (i18n), and PowerShell 2.0+ compatibility.</description>
     <releaseNotes>
@@ -25,7 +25,7 @@
 - Improved Install.ps1 check and installation process
 - Updated documentation and roadmap
     </releaseNotes>
-    <copyright>(c) 2026 HermesConsoleUI Project. All rights reserved.</copyright>
+    <copyright>(c) 2026 HermesConsoleUI Project. Licensed under the MIT License.</copyright>
     <tags>UI Console Terminal PowerShell TUI CLI Menu Table Chart Interactive Theme i18n Localization PSv2 Framework PSModule</tags>
     <dependencies />
   </metadata>
