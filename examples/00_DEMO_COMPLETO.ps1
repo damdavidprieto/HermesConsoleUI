@@ -173,7 +173,11 @@ $columns = @(
     @{ Header = "Estado"; Property = "Estado"; Width = 12 }
     @{ Header = "Puerto"; Property = "Puerto"; Width = 10 }
 )
-Write-ConsoleTable -Data $data -Columns $columns
+if (Get-Command Write-ConsoleTable -ErrorAction SilentlyContinue) {
+    Write-ConsoleTable -Data $data -Columns $columns
+} else {
+    Write-Host "(Write-ConsoleTable aun no esta disponible en esta version)" -ForegroundColor DarkYellow
+}
 Write-Host "Uso: Write-ConsoleTable -Data `$data -Columns `$columns`n" -ForegroundColor DarkGray
 Start-Sleep -Seconds 3
 

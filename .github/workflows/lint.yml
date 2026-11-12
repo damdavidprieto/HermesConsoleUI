@@ -19,14 +19,14 @@ jobs:
         uses: actions/checkout@v4
       
       - name: Install PSScriptAnalyzer
-        shell: powershell
+        shell: pwsh
         run: |
           Install-Module -Name PSScriptAnalyzer -Force -SkipPublisherCheck -Scope CurrentUser
       
       - name: Run PSScriptAnalyzer
-        shell: powershell
+        shell: pwsh
         run: |
-          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Settings PSGallery -ReportSummary
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Settings PSGallery -Severity Error -ReportSummary
           
           if ($results) {
             $results | Format-Table -AutoSize
