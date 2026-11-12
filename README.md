@@ -101,7 +101,15 @@ MIT License - See [LICENSE](LICENSE) for details
 
 ## 🔧 Installation
 
-### Option 1: Automated Install (Recommended)
+### Option 1: PowerShell Gallery (Recommended)
+```powershell
+Install-Module -Name HermesConsoleUI -Scope CurrentUser
+Import-Module HermesConsoleUI
+```
+
+Package page: [HermesConsoleUI on the PowerShell Gallery](https://www.powershellgallery.com/packages/HermesConsoleUI)
+
+### Option 2: Automated Install from source
 ```powershell
 # Install for current user
 .\Install.ps1
@@ -110,7 +118,7 @@ MIT License - See [LICENSE](LICENSE) for details
 .\Install.ps1 -Scope AllUsers
 ```
 
-### Option 2: Manual Install
+### Option 3: Manual Install
 ```powershell
 # Copy to your modules directory
 $modulePath = "$HOME\Documents\WindowsPowerShell\Modules\HermesConsoleUI"
@@ -120,7 +128,7 @@ Copy-Item -Path "." -Destination $modulePath -Recurse
 Import-Module HermesConsoleUI
 ```
 
-### Option 3: Direct Use (No Installation)
+### Option 4: Direct Use (No Installation)
 ```powershell
 # Just import the module from current directory
 Import-Module .\HermesConsoleUI.psd1

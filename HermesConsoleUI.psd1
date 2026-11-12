@@ -18,7 +18,7 @@
     CompanyName       = 'Open Source'
 
     # Copyright statement for this module
-    Copyright         = '(c) 2026 HermesConsoleUI Project. All rights reserved.'
+    Copyright         = '(c) 2026 HermesConsoleUI Project. Licensed under the MIT License.'
 
     # Description of the functionality provided by this module
     Description       = 'Professional PowerShell Console UI Framework - A comprehensive, zero-dependency toolkit for building beautiful terminal applications. Includes 40 functions (11 text, 7 visual, 10 interactive, 12 core) with full theme support, internationalization (i18n), and PowerShell 2.0+ compatibility.'
@@ -126,7 +126,7 @@
             Tags         = @('UI', 'Console', 'Terminal', 'PowerShell', 'TUI', 'CLI', 'Menu', 'Table', 'Chart', 'Interactive', 'Theme', 'i18n', 'Localization', 'PSv2', 'Framework')
 
             # A URL to the license for this module.
-            LicenseUri   = 'https://github.com/damdavidprieto/HermesConsoleUI/blob/master/LICENSE'
+            LicenseUri   = 'https://github.com/damdavidprieto/HermesConsoleUI/blob/main/LICENSE'
 
             # A URL to the main website for this project.
             ProjectUri   = 'https://github.com/damdavidprieto/HermesConsoleUI'
