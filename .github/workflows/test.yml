@@ -52,7 +52,7 @@ jobs:
           check_name: 'Test Results'
       
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v7
         if: always()
         with:
           files: ./coverage.xml
