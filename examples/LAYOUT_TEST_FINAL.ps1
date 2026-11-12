@@ -1,5 +1,5 @@
 # HermesConsoleUI v2.0.1 - Layout Test (ASCII)
-Import-Module "C:\test\HermesConsoleUI\HermesConsoleUI.psd1" -Force
+Import-Module (Join-Path $PSScriptRoot "..\HermesConsoleUI.psd1") -Force
 
 # Asegurar encoding UTF-8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

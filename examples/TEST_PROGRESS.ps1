@@ -1,5 +1,5 @@
 # Test Show-ConsoleProgress function
-Import-Module "C:\test\HermesConsoleUI\HermesConsoleUI.psd1" -Force
+Import-Module (Join-Path $PSScriptRoot "..\HermesConsoleUI.psd1") -Force
 
 Write-Host "`n=== PRUEBA DE SHOW-CONSOLEPROGRESS ===" -ForegroundColor Cyan
 Write-Host ""

@@ -4,8 +4,7 @@
 
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue.svg)](https://github.com/PowerShell/PowerShell)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-2.0.1-orange.svg)](docs/CHANGELOG.md)
-[![Production Ready](https://img.shields.io/badge/Status-Production%20Ready-brightgreen.svg)](PRODUCTION_READY.md)
+[![Version](https://img.shields.io/badge/Version-2.0.1-orange.svg)](https://github.com/damdavidprieto/HermesConsoleUI/releases)
 
 A zero-dependency, highly configurable UI framework for building beautiful PowerShell console applications with internationalization support.
 
@@ -69,10 +68,9 @@ HermesConsoleUI/
 │       └── fr-FR.json       # French
 │
 ├── docs/                     # Documentation
-│   ├── README.md            # Complete API reference
-│   ├── QUICKSTART.md        # Quick start guide
-│   ├── CHANGELOG.md         # Version history
-│   └── LICENSE              # MIT License
+│   ├── README.md            # Documentation index
+│   ├── en/                  # English documentation
+│   └── es/                  # Spanish documentation
 │
 ├── examples/                # Usage examples
 │   ├── DEMO_TOTAL_AUTOMATICO_V2.ps1  # ⭐ Main comprehensive demo
@@ -91,40 +89,13 @@ HermesConsoleUI/
 
 ## 📚 Documentation
 
-- **[Roadmap](docs/ROADMAP.md)** - Development roadmap and future plans
-- **[Tasks](docs/TASKS.md)** - Detailed micro-tasks breakdown
-- **[Gap Analysis](docs/GAP_ANALYSIS.md)** - Feature comparison with other frameworks
-- **[Progress](docs/PROGRESS.md)** - Current development progress
-- **[Project Status](PROJECT_STATUS.md)** - Executive summary
-- **[Changelog](docs/CHANGELOG.md)** - Version history
-
----
-
-## 🚀 Publishing to GitHub
-
-### Quick Start
-1. Create a new repository on GitHub: https://github.com/new
-   - Name: `HermesConsoleUI`
-   - Description: `HermesConsoleUI - The Messenger of Your Terminal. Professional PowerShell Console UI Framework with zero dependencies, i18n support, and dynamic theming`
-   - Visibility: Public
-   - **Don't** initialize with README
-
-2. Connect and push:
-```powershell
-cd C:\test\HermesConsoleUI
-git remote add origin https://github.com/damdavidprieto/HermesConsoleUI.git
-git branch -M main
-git push -u origin main
-```
-
-3. Add topics on GitHub:
-   - powershell, console, ui, tui, terminal, framework, i18n, theming
+- **[Documentation index](docs/README.md)** (English and Spanish)
 
 ---
 
 ## 📄 License
 
-MIT License - See [LICENSE](docs/LICENSE) for details
+MIT License - See [LICENSE](LICENSE) for details
 
 ---
 
@@ -321,7 +292,7 @@ Contributions are welcome! Please submit issues and pull requests on GitHub.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](docs/LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
