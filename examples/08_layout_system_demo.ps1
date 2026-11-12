@@ -1,5 +1,5 @@
 # HermesConsoleUI v2.0.1 - Layout & Grid Dashboard (STABLE V2)
-Import-Module "C:\test\HermesConsoleUI\HermesConsoleUI.psd1" -Force
+Import-Module (Join-Path $PSScriptRoot "..\HermesConsoleUI.psd1") -Force
 
 # Asegurar encoding UTF-8 (con manejo de errores para terminales restringidas)
 try {

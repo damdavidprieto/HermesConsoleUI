@@ -6,14 +6,8 @@ Welcome to PSConsoleUI documentation!
 
 ## 📚 Getting Started
 - [Quick Start](getting-started/quick-start.md) - 5-minute guide
-- Installation Guide *(coming soon)*
-- Basic Examples *(coming soon)*
 
 ## 📖 Guides
-- Themes Guide *(coming soon)*
-- Localization Guide *(coming soon)*
-- Components Guide *(coming soon)*
-- Best Practices *(coming soon)*
 
 ## 📋 Reference
 - [Architecture](reference/ARCHITECTURE.md) - Framework design

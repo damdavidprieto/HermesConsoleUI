@@ -99,7 +99,7 @@
 #    Visibilidad: Public
 
 # 2. Conectar y subir
-cd C:\test\Cassiel\scripts\Libs\PSConsoleUI
+cd HermesConsoleUI
 git remote add origin https://github.com/TU_USUARIO/PSConsoleUI.git
 git branch -M main
 git push -u origin main
@@ -136,7 +136,7 @@ Get-Content docs\ROADMAP.md
 
 **Git:**
 ```bash
-cd C:\test\Cassiel\scripts\Libs\PSConsoleUI
+cd HermesConsoleUI
 git log --oneline
 git status
 ```
