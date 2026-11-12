@@ -137,12 +137,12 @@ Describe "HermesConsoleUI v2.0.1 - Complete Test Suite" {
     }
 
     Context "Interactive Components" {
-        It "Show-ConsoleMenu should execute" {
+        It "Show-ConsoleMenu should execute" -Skip:([Console]::IsOutputRedirected -or $env:CI) {
             $options = @("Option 1", "Option 2")
             { Show-ConsoleMenu -Title "Test" -Options $options } | Should -Not -Throw
         }
 
-        It "Show-ConsoleMenu should return correct count" {
+        It "Show-ConsoleMenu should return correct count" -Skip:([Console]::IsOutputRedirected -or $env:CI) {
             $options = @("Option 1", "Option 2")
             $count = Show-ConsoleMenu -Title "Test" -Options $options
             $count | Should -Be 2

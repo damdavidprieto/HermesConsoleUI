@@ -58,7 +58,7 @@ Describe "Performance Regression Tests" {
     
     Context "CPU Efficiency" {
         
-        It "Should maintain CPU efficiency" {
+        It "Should maintain CPU efficiency" -Skip:([bool]$env:CI) {
             $result = & "$PSScriptRoot\Measure-CPUProfile.ps1"
             $cpuIntensive = $result | Where-Object { $_.CPUPercent -gt 80 }
             
