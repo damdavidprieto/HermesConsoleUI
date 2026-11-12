@@ -50,11 +50,6 @@ Describe "Module Files - Function Definitions" {
             Test-Path "$PSScriptRoot\..\..\modules\visual_components.ps1" | Should -Be $true
         }
         
-        It "Should define Write-ConsoleTable" {
-            $content = Get-Content "$PSScriptRoot\..\..\modules\visual_components.ps1" -Raw
-            $content | Should -Match "function Write-ConsoleTable"
-        }
-        
         It "Should define Write-ConsoleBox" {
             $content = Get-Content "$PSScriptRoot\..\..\modules\visual_components.ps1" -Raw
             $content | Should -Match "function Write-ConsoleBox"

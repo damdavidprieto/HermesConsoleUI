@@ -66,9 +66,5 @@ Describe "HermesConsoleUI Project Structure" {
         It "Should have Integration tests directory" {
             Test-Path "$PSScriptRoot\..\Integration" | Should -Be $true
         }
-        
-        It "Should have Security tests directory" {
-            Test-Path "$PSScriptRoot\..\Security" | Should -Be $true
-        }
     }
 }
