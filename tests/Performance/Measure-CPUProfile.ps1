@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Profiles CPU usage during operations.
 

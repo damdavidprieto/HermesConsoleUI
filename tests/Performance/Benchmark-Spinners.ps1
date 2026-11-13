@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Benchmarks spinner animation performance.
 

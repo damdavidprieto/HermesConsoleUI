@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Profiles memory usage and detects memory leaks.
 
