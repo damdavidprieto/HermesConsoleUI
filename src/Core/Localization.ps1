@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     PSConsoleUI Localization System
     

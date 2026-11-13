@@ -1,0 +1,59 @@
+name: Module
+
+# Builds the module the way it is published and installs it on Windows PowerShell 5.1
+# with Install-Module, the path users take from the PowerShell Gallery.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-install:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build (PowerShell 7)
+        shell: pwsh
+        run: |
+          Install-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force -SkipPublisherCheck -Scope CurrentUser
+          ./build.ps1 -SkipAnalysis
+
+      - name: Pack into a local repository
+        shell: pwsh
+        run: |
+          $repo = Join-Path $env:RUNNER_TEMP 'localrepo'
+          New-Item -ItemType Directory -Path $repo -Force | Out-Null
+          Register-PSResourceRepository -Name LocalRepo -Uri $repo -Trusted
+          Publish-PSResource -Path ./output/HermesConsoleUI -Repository LocalRepo
+          $nupkg = Get-ChildItem $repo -Filter *.nupkg
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $entries = [IO.Compression.ZipFile]::OpenRead($nupkg.FullName).Entries.FullName
+          $entries
+          if ($entries -match '^(\.git|\.github|tests|docs|examples)/') { throw 'Package contains repository-only files' }
+
+      - name: Install with Install-Module (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSVersionTable.PSVersion
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+          Register-PSRepository -Name LocalRepo -SourceLocation (Join-Path $env:RUNNER_TEMP 'localrepo') -InstallationPolicy Trusted
+          Install-Module HermesConsoleUI -Repository LocalRepo -Scope CurrentUser
+          Get-Module HermesConsoleUI -ListAvailable | Format-Table Name, Version, ModuleBase
+
+      - name: Auto-load without Import-Module (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-ConsoleTitle 'Auto-loaded on Windows PowerShell 5.1'
+          $module = Get-Module HermesConsoleUI
+          if (-not $module) { throw 'Module was not auto-loaded' }
+          "Loaded $($module.Name) $($module.Version) with $($module.ExportedFunctions.Count) functions"
+          if ((Get-AvailableThemes) -notcontains 'Cyberpunk') { throw 'Theme configuration did not load' }

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Master script to run all hygiene analyses.
 

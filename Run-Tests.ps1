@@ -1,4 +1,4 @@
-# Run HermesConsoleUI Tests
+﻿# Run HermesConsoleUI Tests
 # Simple test runner to validate all tests pass
 
 Write-Host "=== HermesConsoleUI Test Suite ===" -ForegroundColor Cyan

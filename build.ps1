@@ -1,106 +1,86 @@
-# build.ps1 - HermesConsoleUI Build & Test Automation
+﻿<#
+.SYNOPSIS
+    Builds HermesConsoleUI into output/HermesConsoleUI, ready to install or publish.
 
+.DESCRIPTION
+    Runs PSScriptAnalyzer and the Pester tests, then copies only the files the module
+    needs at runtime into output/HermesConsoleUI and validates the result. Publish that
+    folder, never the repository root, so tests, docs and .git never reach the Gallery.
+
+.EXAMPLE
+    ./build.ps1
+    ./build.ps1 -SkipTests
+    Publish-Module -Path ./output/HermesConsoleUI -NuGetApiKey $env:PSGALLERY_API_KEY
+#>
+[CmdletBinding()]
 param(
     [switch]$InstallDependencies,
-    [switch]$SkipTests,
-    [switch]$Publish
+    [switch]$SkipAnalysis,
+    [switch]$SkipTests
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
+$moduleName = 'HermesConsoleUI'
+$outputDir = Join-Path $PSScriptRoot "output\$moduleName"
 
-Write-Host "Starting HermesConsoleUI Build..." -ForegroundColor Cyan
+# Files and folders the module loads at runtime (see HermesConsoleUI.psm1).
+$runtimeItems = @(
+    "$moduleName.psd1",
+    "$moduleName.psm1",
+    'LICENSE',
+    'README.md',
+    'config',
+    'src',
+    'modules\helpers.ps1',
+    'modules\text_components.ps1',
+    'modules\visual_components.ps1',
+    'modules\interactive_components.ps1',
+    'modules\layout_components.ps1'
+)
 
 if ($InstallDependencies) {
-    Write-Host "Installing dependencies (Pester, PSScriptAnalyzer)..." -ForegroundColor Yellow
-    Install-Module Pester -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction SilentlyContinue
-    Install-Module PSScriptAnalyzer -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction SilentlyContinue
+    Install-Module Pester -MinimumVersion 5.0.0 -Force -SkipPublisherCheck -Scope CurrentUser
+    Install-Module PSScriptAnalyzer -Force -SkipPublisherCheck -Scope CurrentUser
 }
 
-# 1. Static Code Analysis
-Write-Host "Running PSScriptAnalyzer..." -ForegroundColor Cyan
-$saResults = Invoke-ScriptAnalyzer -Path "$PSScriptRoot" -Recurse -Severity Error, Warning
-if ($saResults) {
-    $saResults | Format-Table
-    if ($saResults | Where-Object { $_.Severity -eq "Error" }) {
-        Write-Error "Build Failed: PSScriptAnalyzer found errors."
+if (-not $SkipAnalysis) {
+    Write-Host 'Running PSScriptAnalyzer...' -ForegroundColor Cyan
+    $issues = Invoke-ScriptAnalyzer -Path $PSScriptRoot -Recurse -Settings PSGallery -Severity Error
+    if ($issues) {
+        $issues | Format-Table -AutoSize
+        throw "PSScriptAnalyzer found $($issues.Count) error(s)."
     }
 }
-else {
-    Write-Host "Code Analysis Passed." -ForegroundColor Green
-}
 
-# 2. Testing
 if (-not $SkipTests) {
-    Write-Host "Running Pester Tests..." -ForegroundColor Cyan
-    # Check if Tests folder exists (case insensitive check usually works, but being specific helps)
-    $testPath = "$PSScriptRoot\Tests"
-    if (-not (Test-Path $testPath)) {
-        $testPath = "$PSScriptRoot\tests"
-    }
-
-    if (Test-Path $testPath) {
-        $pester = Invoke-Pester -Path $testPath -PassThru -Output Detailed
-        if ($pester.FailedCount -gt 0) {
-            Write-Error "Build Failed: $($pester.FailedCount) tests failed."
-        }
-        Write-Host "All Tests Passed." -ForegroundColor Green
-    }
-    else {
-        Write-Warning "No Tests directory found. Skipping tests."
+    Write-Host 'Running Pester tests...' -ForegroundColor Cyan
+    $config = New-PesterConfiguration
+    $config.Run.Path = Join-Path $PSScriptRoot 'tests'
+    $config.Run.ExcludePath = @(Join-Path $PSScriptRoot 'tests\Performance\*')
+    $config.Run.PassThru = $true
+    $config.Output.Verbosity = 'Normal'
+    $result = Invoke-Pester -Configuration $config
+    if ($result.FailedCount -gt 0) {
+        throw "$($result.FailedCount) test(s) failed."
     }
 }
 
-# 3. Validation
-Write-Host "Validating Module Manifest..." -ForegroundColor Cyan
-Test-ModuleManifest -Path "$PSScriptRoot\HermesConsoleUI.psd1" | Out-Null
-Write-Host "Manifest Valid." -ForegroundColor Green
+Write-Host "Building $outputDir..." -ForegroundColor Cyan
+if (Test-Path $outputDir) { Remove-Item $outputDir -Recurse -Force }
+New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 
-Write-Host "Build Complete!" -ForegroundColor Green
-
-if ($Publish) {
-    Write-Host "Creating Prerelease Artifact..." -ForegroundColor Cyan
-    $prereleaseDir = Join-Path $PSScriptRoot "..\HermesConsoleUI_PreRelease"
-    $prereleaseDir = [System.IO.Path]::GetFullPath($prereleaseDir)
-    
-    if (Test-Path $prereleaseDir) { Remove-Item $prereleaseDir -Recurse -Force }
-    New-Item -Path $prereleaseDir -ItemType Directory -Force | Out-Null
-
-    # Read FileList from Manifest
-    $manifest = Import-PowerShellDataFile "$PSScriptRoot\HermesConsoleUI.psd1"
-    $filesToCopy = $manifest.FileList
-
-    foreach ($file in $filesToCopy) {
-        $src = Join-Path $PSScriptRoot $file
-        $dest = Join-Path $prereleaseDir $file
-        
-        if (Test-Path $src) {
-            $parent = Split-Path $dest -Parent
-            if (-not (Test-Path $parent)) { New-Item -Path $parent -ItemType Directory -Force | Out-Null }
-            Copy-Item -Path $src -Destination $dest -Force
-        }
-        else {
-            Write-Warning "File listed in manifest not found: $file"
-        }
-    }
-    
-    # Add Release README
-    $releaseReadme = Join-Path $prereleaseDir "README_PRERELEASE.md"
-    @"
-# HermesConsoleUI - PreRelease Version
-
-This directory contains the production-ready build of the HermesConsoleUI module.
-
-## Installation
-
-1. Copy this entire folder to your PowerShell Modules directory:
-   ``$HOME\Documents\WindowsPowerShell\Modules\HermesConsoleUI``
-
-2. Import the module:
-   ``Import-Module HermesConsoleUI``
-
-## Documentation
-See the ``docs`` folder for full documentation.
-"@ | Set-Content $releaseReadme
-    
-    Write-Host "✅ Prerelease artifact created at: $prereleaseDir" -ForegroundColor Green
+foreach ($item in $runtimeItems) {
+    $source = Join-Path $PSScriptRoot $item
+    $destination = Join-Path $outputDir $item
+    New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
+    Copy-Item -Path $source -Destination $destination -Recurse -Force
 }
+
+$manifest = Test-ModuleManifest -Path (Join-Path $outputDir "$moduleName.psd1")
+$unexpected = Get-ChildItem $outputDir -Recurse -Force |
+    Where-Object { $_.Name -in '.git', '.github', 'tests', 'docs', 'examples' }
+if ($unexpected) {
+    throw "Build output contains files that must not be published: $($unexpected.FullName -join ', ')"
+}
+
+Write-Host "Built $moduleName $($manifest.Version) in $outputDir" -ForegroundColor Green

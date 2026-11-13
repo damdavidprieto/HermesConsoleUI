@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Finds temporary, development, and legacy files in the project.
 

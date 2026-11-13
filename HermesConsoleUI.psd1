@@ -3,10 +3,10 @@
     RootModule        = 'HermesConsoleUI.psm1'
 
     # Version number of this module.
-    ModuleVersion     = '2.0.1'
+    ModuleVersion     = '2.2.0'
 
     # Supported PSEditions
-    # CompatiblePSEditions = @('Desktop', 'Core')
+    CompatiblePSEditions = @('Desktop', 'Core')
 
     # ID used to uniquely identify this module
     GUID              = 'a7f3e8d2-4c91-4b5a-9e7f-2d8c3a1b6e4f'
@@ -21,10 +21,10 @@
     Copyright         = '(c) 2026 HermesConsoleUI Project. Licensed under the MIT License.'
 
     # Description of the functionality provided by this module
-    Description       = 'Professional PowerShell Console UI Framework - A comprehensive, zero-dependency toolkit for building beautiful terminal applications. Includes 40 functions (11 text, 7 visual, 10 interactive, 12 core) with full theme support, internationalization (i18n), and PowerShell 2.0+ compatibility.'
+    Description       = 'Professional PowerShell Console UI Framework - A comprehensive, zero-dependency toolkit for building beautiful terminal applications. Text, visual, interactive and layout components with themes and internationalization (i18n). Works on Windows PowerShell 5.1 and PowerShell 7+.'
 
     # Minimum version of the PowerShell engine required by this module
-    PowerShellVersion = '2.0'
+    PowerShellVersion = '5.1'
 
     # Functions to export from this module
     FunctionsToExport = @(
@@ -79,12 +79,7 @@
         'New-ConsoleLayout',
         'New-ConsoleRow',
         'New-ConsoleColumn',
-        'New-ConsoleColumn',
-        'Write-ConsoleLayout',
-        
-        # Windows Integration
-        'Set-TaskbarProgress',
-        'Show-WindowsNotification'
+        'Write-ConsoleLayout'
     )
 
     # Cmdlets to export from this module
@@ -96,34 +91,12 @@
     # Aliases to export from this module
     AliasesToExport   = @()
 
-    # List of all files packaged with this module
-    FileList          = @(
-        'HermesConsoleUI.psm1',
-        'HermesConsoleUI.psd1',
-        'modules\helpers.ps1',
-        'modules\text_components.ps1',
-        'modules\visual_components.ps1',
-        'modules\interactive_components.ps1',
-        'modules\layout_components.ps1',
-        'modules\windows_integration.ps1',
-        'Install.ps1',
-        'README.md',
-        'LICENSE',
-        'src\Constants\Constants.ps1',
-        'src\Core\Localization.ps1',
-        'src\Validators\Validators.ps1',
-        'config\ui_config.json',
-        'config\locales\en-US.json',
-        'config\locales\es-ES.json',
-        'config\locales\fr-FR.json',
-        'docs\README.md'
-    )
 
     # Private data
     PrivateData       = @{
         PSData = @{
             # Tags applied to this module.
-            Tags         = @('UI', 'Console', 'Terminal', 'PowerShell', 'TUI', 'CLI', 'Menu', 'Table', 'Chart', 'Interactive', 'Theme', 'i18n', 'Localization', 'PSv2', 'Framework')
+            Tags         = @('UI', 'Console', 'Terminal', 'PowerShell', 'TUI', 'CLI', 'Menu', 'Table', 'Chart', 'Interactive', 'Theme', 'i18n', 'Localization', 'Framework', 'PSEdition_Desktop', 'PSEdition_Core')
 
             # A URL to the license for this module.
             LicenseUri   = 'https://github.com/damdavidprieto/HermesConsoleUI/blob/main/LICENSE'
@@ -133,20 +106,16 @@
 
             # ReleaseNotes of this module
             ReleaseNotes = @'
-# Release Notes - v2.0.1
+# 2.2.0
 
-## Branding Update
-- Rebranded to HermesConsoleUI
+- Requires Windows PowerShell 5.1 or PowerShell 7+ (was declared as 2.0).
+- Fixed loading on Windows PowerShell 5.1: source files are now UTF-8 with BOM, so
+  the configuration system parses correctly and themes work again.
+- Exports exactly the public functions (removed a duplicate entry and two Windows
+  integration functions that were never loaded).
+- The package now contains only the module files.
 
-## Bug Fixes
-- Fixed visual rendering artifacts in PowerShell ISE (color bleeding, column misalignment)
-- Fixed "Rainbow Text" issues by sanitizing file encodings
-- Removed double brackets in demo output
-- Updated Show-ConsoleProgress to use ASCII characters for better compatibility
-
-## New Features
-- Improved Install.ps1 check and installation process
-- Updated documentation and roadmap
+Full changelog: https://github.com/damdavidprieto/HermesConsoleUI/blob/main/docs/en/reference/CHANGELOG.md
 '@
         }
     }

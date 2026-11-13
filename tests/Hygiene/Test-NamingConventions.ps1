@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Validates naming conventions for files and functions.
 

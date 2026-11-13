@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned for v2.2
+### Planned for v2.3
 - Form builder component
 - Tab navigation component
 - Wizard/stepper component
@@ -21,6 +21,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PowerShell Gallery publication
 
 ---
+
+## [2.2.0] - 2026-11-13
+
+### Corregido
+- Instalación desde la PowerShell Gallery: el paquete se construye ahora desde `output/HermesConsoleUI`
+  y solo contiene los archivos del módulo. Los paquetes anteriores incluían `.git`, tests y docs.
+- Carga en Windows PowerShell 5.1: los archivos con caracteres no ASCII se guardan ahora en UTF-8 con BOM.
+  Sin él, la 5.1 los leía como ANSI y `src/Core/Config.ps1` no se podía analizar, así que los temas se
+  habían sustituido por funciones de relleno. Vuelve a cargarse el sistema de configuración real.
+- El manifiesto listaba `New-ConsoleColumn` dos veces y exportaba `Set-TaskbarProgress` y
+  `Show-WindowsNotification`, que nunca se cargaban. Ahora exporta exactamente las funciones cargadas.
+
+### Cambiado
+- Versión mínima: Windows PowerShell 5.1 (antes se declaraba 2.0). Compatible con Desktop y Core.
+- Nuevo `build.ps1` y workflow `Publish`. Se elimina el empaquetado con `nuget.exe` (`HermesConsoleUI.nuspec`).
+- El CI prueba el módulo construido en Windows PowerShell 5.1 y PowerShell 7, incluida su instalación con
+  `Install-Module` desde un repositorio local.
 
 ## [2.0.1] - 2026-01-15
 

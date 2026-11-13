@@ -1,4 +1,4 @@
-# HermesConsoleUI v2.0.1 - Demo Interactivo Completo
+﻿# HermesConsoleUI v2.0.1 - Demo Interactivo Completo
 # Muestra TODOS los componentes: visuales + interactivos
 
 Import-Module (Join-Path $PSScriptRoot "..\HermesConsoleUI.psd1") -Force

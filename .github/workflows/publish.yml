@@ -1,0 +1,39 @@
+name: Publish
+
+# Publishes output/HermesConsoleUI (never the repository root) to the PowerShell Gallery
+# when a version tag is pushed, e.g. `git tag v2.2.0 && git push origin v2.2.0`.
+# Needs the PSGALLERY_API_KEY repository secret: a Gallery API key scoped to HermesConsoleUI only.
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    environment: psgallery
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        shell: pwsh
+        run: |
+          Install-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force -SkipPublisherCheck -Scope CurrentUser
+          ./build.ps1 -SkipAnalysis
+
+      - name: Check the tag matches the manifest version
+        shell: pwsh
+        run: |
+          $version = (Import-PowerShellDataFile ./output/HermesConsoleUI/HermesConsoleUI.psd1).ModuleVersion
+          if ("v$version" -ne $env:GITHUB_REF_NAME) { throw "Tag $env:GITHUB_REF_NAME does not match ModuleVersion $version" }
+
+      - name: Publish to the PowerShell Gallery
+        shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          if (-not $env:PSGALLERY_API_KEY) { throw 'PSGALLERY_API_KEY secret is not set' }
+          Publish-PSResource -Path ./output/HermesConsoleUI -Repository PSGallery -ApiKey $env:PSGALLERY_API_KEY

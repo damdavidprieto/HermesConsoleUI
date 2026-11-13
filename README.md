@@ -104,8 +104,12 @@ MIT License - See [LICENSE](LICENSE) for details
 ### Option 1: PowerShell Gallery (Recommended)
 ```powershell
 Install-Module -Name HermesConsoleUI -Scope CurrentUser
-Import-Module HermesConsoleUI
 ```
+
+The module auto-loads the first time you call one of its commands; `Import-Module` is optional.
+It requires Windows PowerShell 5.1 or PowerShell 7+. On a fresh Windows PowerShell 5.1 install,
+update PowerShellGet first (`Install-Module PowerShellGet -Force -Scope CurrentUser`) and accept
+the NuGet provider prompt.
 
 Package page: [HermesConsoleUI on the PowerShell Gallery](https://www.powershellgallery.com/packages/HermesConsoleUI)
 
@@ -243,35 +247,33 @@ Invoke-Pester -Path ".\tests\ui_components.tests.ps1" -TestName "Write-ConsoleSt
 
 ## 🛠️ Build & Development
 
-HermesConsoleUI uses a standardized build process similar to ArgosCCF.
-
-### Build Script (`build.ps1`)
-Use the included build script to install dependencies, analyze code, run tests, and package the module.
+`build.ps1` runs PSScriptAnalyzer and the Pester tests, then copies only the files the module
+needs at runtime into `output/HermesConsoleUI`. That folder is what gets installed or published;
+the repository root (tests, docs, examples, `.git`) never is.
 
 ```powershell
-# Run full build (Analysis + Tests + Validation)
-.\build.ps1
-
-# Install dependencies (Pester, PSScriptAnalyzer) before first run
+# Install dependencies (Pester 5, PSScriptAnalyzer) before the first run
 .\build.ps1 -InstallDependencies
 
-# Create Release Artifact (in _prerelease folder)
-.\build.ps1 -Publish
+# Analysis + tests + build
+.\build.ps1
+
+# Try the built module
+Import-Module .\output\HermesConsoleUI\HermesConsoleUI.psd1 -Force
 ```
 
-### Artifacts
-When running with `-Publish`, a ready-to-use module package is created in:
-`.\_prerelease\HermesConsoleUI`
+Releases are published by the `Publish` workflow when a `v*` tag is pushed. It builds the module
+and runs `Publish-Module -Path ./output/HermesConsoleUI` with the `PSGALLERY_API_KEY` secret.
 
 ---
 
 ## 📦 Package Information
 
 - **Name**: HermesConsoleUI
-- **Version**: 2.0.1
+- **Version**: 2.2.0
 - **Author**: David Prieto
 - **License**: MIT
-- **PowerShell**: 2.0+
+- **PowerShell**: Windows PowerShell 5.1, PowerShell 7+
 - **Platform**: Windows
 
 ---

@@ -35,3 +35,6 @@ tmp/
 *.old
 CassielUI.psd1
 _prerelease/
+
+# Build output (see build.ps1)
+output/

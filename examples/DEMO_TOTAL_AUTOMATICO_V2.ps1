@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     HermesConsoleUI v2.0.1 - Demo Total Automatico Mejorado
     

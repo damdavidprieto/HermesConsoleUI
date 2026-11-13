@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Demo of all 5 new Priority 1 components in PSConsoleUI
 
