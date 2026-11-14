@@ -17,8 +17,9 @@ $modulePath = Join-Path $PSScriptRoot "..\..\HermesConsoleUI.psm1"
 Import-Module $modulePath -Force
 
 function Get-MemoryUsage {
-    $process = Get-Process -Id $PID
-    [Math]::Round($process.WorkingSet64 / 1MB, 2)
+    # Managed heap after a full collection. The process working set also counts native
+    # memory and pages the OS trims or grows on its own, which made this check flaky on CI.
+    [Math]::Round([GC]::GetTotalMemory($true) / 1MB, 2)
 }
 
 function Test-MemoryLeak {
