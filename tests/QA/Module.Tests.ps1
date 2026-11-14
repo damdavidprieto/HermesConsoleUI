@@ -74,7 +74,10 @@ Describe 'Comment-based help for <Name>' -ForEach $commands {
 
 Describe 'PSScriptAnalyzer: <Name>' -ForEach $sourceFiles {
     It 'has no findings with the repository settings' {
-        $findings = Invoke-ScriptAnalyzer -Path $Path -Settings $settings
+        # PSScriptAnalyzer can throw a NullReferenceException the first time it runs in a new
+        # process; the same call succeeds when repeated, so retry once.
+        $findings = try { Invoke-ScriptAnalyzer -Path $Path -Settings $settings -ErrorAction Stop }
+        catch { if ($_.Exception.Message -match 'Object reference') { Invoke-ScriptAnalyzer -Path $Path -Settings $settings } else { throw } }
         $findings | ForEach-Object { "$($_.RuleName) line $($_.Line): $($_.Message)" } | Should -BeNullOrEmpty
     }
 }

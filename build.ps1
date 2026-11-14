@@ -56,7 +56,12 @@ if (-not $SkipAnalysis) {
     $settings = Join-Path $PSScriptRoot 'PSScriptAnalyzerSettings.psd1'
     $sources = $runtimeItems | ForEach-Object { Join-Path $PSScriptRoot $_ } |
         Get-ChildItem -Recurse -Include '*.ps1', '*.psm1', '*.psd1' -File
-    $issues = $sources | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Settings $settings }
+    # PSScriptAnalyzer 1.2x can throw a NullReferenceException the first time it runs its rules
+    # in a new process; the same call succeeds when repeated, so retry once.
+    $issues = foreach ($source in $sources) {
+        try { Invoke-ScriptAnalyzer -Path $source.FullName -Settings $settings -ErrorAction Stop }
+        catch { if ($_.Exception.Message -match 'Object reference') { Invoke-ScriptAnalyzer -Path $source.FullName -Settings $settings } else { throw } }
+    }
     if ($issues) {
         $issues | Format-Table RuleName, Severity, ScriptName, Line, Message -AutoSize -Wrap | Out-Host
         throw "PSScriptAnalyzer found $(@($issues).Count) issue(s)."
@@ -87,8 +92,9 @@ foreach ($item in $runtimeItems) {
 }
 
 $manifest = Test-ModuleManifest -Path (Join-Path $outputDir "$moduleName.psd1")
-$unexpected = Get-ChildItem $outputDir -Recurse -Force |
-    Where-Object { $_.Name -in '.git', '.github', 'tests', 'docs', 'examples', 'output' -or $_.Extension -in '.log', '.nupkg' }
+$forbidden = '.git', '.github', 'tests', 'docs', 'examples', 'logs', 'output', 'user'
+$unexpected = @(Get-ChildItem $outputDir -Force | Where-Object { $_.Name -in $forbidden }) +
+    @(Get-ChildItem $outputDir -Recurse -Force -File | Where-Object { $_.Extension -in '.log', '.nupkg' })
 if ($unexpected) {
     throw "Build output contains files that must not be published: $($unexpected.FullName -join ', ')"
 }
