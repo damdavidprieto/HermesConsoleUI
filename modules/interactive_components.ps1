@@ -30,44 +30,45 @@ function Show-ConsoleMenu {
     $width = 60
     
     $border = '=' * $width
-    Write-Host ''
-    Write-Host $border -ForegroundColor $Color
+    Write-HermesHost ''
+    Write-HermesHost $border -ForegroundColor $Color
     $padding = [Math]::Floor(($width - $Title.Length) / 2)
-    Write-Host ((' ' * $padding) + $Title) -ForegroundColor White
-    Write-Host $border -ForegroundColor $Color
-    Write-Host ''
+    Write-HermesHost ((' ' * $padding) + $Title) -ForegroundColor White
+    Write-HermesHost $border -ForegroundColor $Color
+    Write-HermesHost ''
     
     $selectableCount = 0
     for ($i = 0; $i -lt $Options.Count; $i++) {
         $opt = $Options[$i]
         
         if ($opt -match '^---') {
-            Write-Host ('  ' + $opt) -ForegroundColor DarkGray
+            Write-HermesHost ('  ' + $opt) -ForegroundColor DarkGray
         }
         elseif ($opt -match '^\[') {
-            Write-Host ('  ' + $opt) -ForegroundColor $Color
+            Write-HermesHost ('  ' + $opt) -ForegroundColor $Color
         }
         else {
             $selectableCount++
             $text = $opt
             $itemColor = $OptionColor
-            if ($opt -match '^\{([a-zA-Z]+)\}(.*)') {
-                $itemColor = $matches[1]
+            $parsedColor = [ConsoleColor]::Gray
+            if ($opt -match '^\{([a-zA-Z]+)\}(.*)' -and [Enum]::TryParse($matches[1], $true, [ref]$parsedColor)) {
+                $itemColor = $parsedColor
                 $text = $matches[2]
             }
-            Write-Host '  [' -NoNewline -ForegroundColor Gray
-            Write-Host ([string]$selectableCount) -NoNewline -ForegroundColor $Color
-            Write-Host '] ' -NoNewline -ForegroundColor Gray
-            Write-Host $text -ForegroundColor $itemColor
+            Write-HermesHost '  [' -NoNewline -ForegroundColor Gray
+            Write-HermesHost ([string]$selectableCount) -NoNewline -ForegroundColor $Color
+            Write-HermesHost '] ' -NoNewline -ForegroundColor Gray
+            Write-HermesHost $text -ForegroundColor $itemColor
         }
     }
     
     if ($Footer) {
-        Write-Host ''
-        Write-Host ('  ' + $Footer) -ForegroundColor Yellow
+        Write-HermesHost ''
+        Write-HermesHost ('  ' + $Footer) -ForegroundColor Yellow
     }
     
-    Write-Host ''
+    Write-HermesHost ''
     return $selectableCount
 }
 
@@ -84,18 +85,19 @@ function Read-ConsoleChoice {
     )
     
     if ($AllowZero) {
-        Write-Host '(0 para salir)' -ForegroundColor Gray
+        Write-HermesHost '(0 para salir)' -ForegroundColor Gray
     }
     
-    Write-Host ''
+    Write-HermesHost ''
 
     do {
-        Write-Host ($Prompt + ': ') -NoNewline -ForegroundColor Cyan
+        Write-HermesHost ($Prompt + ': ') -NoNewline -ForegroundColor Cyan
         
         $val = Read-Host
         
-        if ($val -match '^\d+$') {
-            $choice = [int]$val
+        # TryParse instead of [int]: a very long number would overflow and end the script.
+        $choice = 0
+        if ("$val".Trim() -match '^\d+$' -and [int]::TryParse("$val".Trim(), [ref]$choice)) {
             if ($AllowZero -and $choice -eq 0) {
                 return 0
             }
@@ -104,8 +106,8 @@ function Read-ConsoleChoice {
             }
         }
         
-        Write-Host '  [!] Opcion invalida. Intenta de nuevo.' -ForegroundColor Red
-        Write-Host ''
+        Write-HermesHost '  [!] Opcion invalida. Intenta de nuevo.' -ForegroundColor Red
+        Write-HermesHost ''
     } while ($true)
 }
 
@@ -141,8 +143,8 @@ function Invoke-ConsoleMenu {
             & $selectedItem.Action
         }
         
-        Write-Host ''
-        Write-Host '  Presiona Enter para continuar...' -ForegroundColor Gray
+        Write-HermesHost ''
+        Write-HermesHost '  Presiona Enter para continuar...' -ForegroundColor Gray
         Read-Host
         
     } while ($true)
@@ -163,21 +165,26 @@ function Read-ConsoleMultiChoice {
         [string]$Prompt = 'Seleccione opciones (Separadas por coma)'
     )
     
-    Write-Host ('  ' + $Prompt) -ForegroundColor Cyan
+    Write-HermesHost ('  ' + $Prompt) -ForegroundColor Cyan
     $i = 1
     foreach ($opt in $Options) {
-        Write-Host ('    [' + $i + '] ' + $opt)
+        Write-HermesHost ('    [' + $i + '] ' + $opt)
         $i++
     }
     
     $val = Read-Host '    > '
     if (-not $val) { return @() }
     
-    $selectedIndices = $val.Split(',')
+    # Only 1..Count is valid. "0" used to select the last option (index -1), and a very
+    # long number threw. Each option is returned once, in the order the user typed it.
     $results = @()
-    foreach ($idx in $selectedIndices) {
-        if ($idx -match '^\d+$' -and [int]$idx -le $Options.Count) {
-            $results += $Options[[int]$idx - 1]
+    $seen = @{}
+    foreach ($idx in $val.Split(',')) {
+        $n = 0
+        $token = $idx.Trim()
+        if ($token -match '^\d+$' -and [int]::TryParse($token, [ref]$n) -and $n -ge 1 -and $n -le $Options.Count -and -not $seen.ContainsKey($n)) {
+            $seen[$n] = $true
+            $results += $Options[$n - 1]
         }
     }
     return $results
@@ -195,7 +202,7 @@ function Write-ConsoleTable {
     )
 
     if ($Data.Count -eq 0) {
-        Write-Host '  (No data to display)' -ForegroundColor Gray
+        Write-HermesHost '  (No data to display)' -ForegroundColor Gray
         return
     }
 
@@ -228,26 +235,26 @@ function Write-ConsoleTable {
     }
     
     # Simple table rendering
-    Write-Host ''
-    if ($Title) { Write-Host ('  ' + $Title) -ForegroundColor Cyan }
+    Write-HermesHost ''
+    if ($Title) { Write-HermesHost ('  ' + $Title) -ForegroundColor Cyan }
     
     # Headers
-    Write-Host '  ' -NoNewline
+    Write-HermesHost '  ' -NoNewline
     foreach ($col in $Columns) {
-        Write-Host ($col.Header.PadRight($col.Width)) -NoNewline -ForegroundColor Yellow
+        Write-HermesHost ($col.Header.PadRight($col.Width)) -NoNewline -ForegroundColor Yellow
     }
-    Write-Host ''
+    Write-HermesHost ''
     
     # Rows
     foreach ($row in $Data) {
-        Write-Host '  ' -NoNewline
+        Write-HermesHost '  ' -NoNewline
         foreach ($col in $Columns) {
             $val = $row.($col.Property)
-            Write-Host ([string]$val).PadRight($col.Width) -NoNewline -ForegroundColor White
+            Write-HermesHost ([string]$val).PadRight($col.Width) -NoNewline -ForegroundColor White
         }
-        Write-Host ''
+        Write-HermesHost ''
     }
-    Write-Host ''
+    Write-HermesHost ''
 }
 
 function Invoke-ConsoleSpinner {
@@ -260,17 +267,24 @@ function Invoke-ConsoleSpinner {
         [Alias('ScriptBlock')]
         [scriptblock]$Action
     )
-    Write-Host $Message -NoNewline
+    Write-HermesHost $Message -NoNewline
     $spinner = @('|', '/', '-', '\')
+    # The spinner writes backspaces on purpose, so these two lines use Write-Host directly.
     $job = Start-Job -ScriptBlock $Action
-    while ($job.State -eq 'Running') {
-        foreach ($s in $spinner) {
-            Write-Host "`b$s" -NoNewline
-            Start-Sleep -Milliseconds 100
+    try {
+        while ($job.State -in 'NotStarted', 'Running') {
+            foreach ($s in $spinner) {
+                Write-Host "`b$s" -NoNewline
+                Start-Sleep -Milliseconds 100
+            }
         }
+        Receive-Job $job
+        Write-Host "`bDone" -ForegroundColor Green
     }
-    Receive-Job $job
-    Write-Host "`bDone" -ForegroundColor Green
+    finally {
+        # Stop and remove the job even if the user presses Ctrl+C, so it does not keep running.
+        Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Write-ConsoleProgress {
@@ -315,12 +329,12 @@ function Show-ConsoleProgress {
     $emptyBar = '.' * $empty
     
     # Display progress bar
-    Write-Host "  $Activity " -NoNewline
-    Write-Host '[' -NoNewline -ForegroundColor Gray
-    Write-Host $filledBar -NoNewline -ForegroundColor $Color
-    Write-Host $emptyBar -NoNewline -ForegroundColor DarkGray
-    Write-Host '] ' -NoNewline -ForegroundColor Gray
-    Write-Host "$PercentComplete%" -ForegroundColor $Color
+    Write-HermesHost "  $Activity " -NoNewline
+    Write-HermesHost '[' -NoNewline -ForegroundColor Gray
+    Write-HermesHost $filledBar -NoNewline -ForegroundColor $Color
+    Write-HermesHost $emptyBar -NoNewline -ForegroundColor DarkGray
+    Write-HermesHost '] ' -NoNewline -ForegroundColor Gray
+    Write-HermesHost "$PercentComplete%" -ForegroundColor $Color
 }
 
 function Read-ConsoleInput {
@@ -341,7 +355,7 @@ function Read-ConsolePassword {
 
 function Show-ConsoleNotification {
     param([string]$Message, [string]$Type = 'Info')
-    Write-Host "[$Type] $Message" -ForegroundColor Yellow
+    Write-HermesHost "[$Type] $Message" -ForegroundColor Yellow
 }
 
 

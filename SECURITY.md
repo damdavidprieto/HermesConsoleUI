@@ -2,7 +2,16 @@
 
 ## Supported Versions
 
-Only the latest version on the default branch is supported.
+Only the latest version is supported. Versions before 2.2.0 write displayed data to the console
+without removing terminal escape sequences; update to 2.2.0 or later.
+
+## Displaying untrusted data
+
+From 2.2.0, every component removes terminal control sequences (ANSI CSI/OSC, carriage returns and
+other control characters) from the text it writes, so data such as file names or log lines cannot
+restyle the console, overwrite earlier lines or set the clipboard. Script blocks you pass to
+`Invoke-ConsoleMenu`, `Write-ConsolePanel` or `Invoke-ConsoleSpinner` run with your own permissions:
+never build them from untrusted input.
 
 ## Reporting a Vulnerability
 

@@ -69,9 +69,9 @@ function Write-ConsoleLayout {
         # Merge and print
         $merged = Set-LayoutBuffer -Columns $colOutputs -Widths $colWidths
         foreach ($l in $merged) {
-            Write-Host "  $l"
+            Write-HermesHost "  $l"
         }
-        Write-Host "" # Row separator
+        Write-HermesHost "" # Row separator
     }
 }
 

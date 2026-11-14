@@ -7,6 +7,53 @@
     Includes: Border generation, text centering, value limiting, data validation.
 #>
 
+function ConvertTo-ConsoleSafeText {
+    <#
+    .SYNOPSIS
+        Removes terminal control sequences from text before it is written to the console.
+    .DESCRIPTION
+        Text shown by the UI components often comes from outside the script: file names,
+        log lines, API responses. If it contains escape sequences, writing it as-is lets that
+        data recolor or hide output, move the cursor to overwrite earlier lines, change the
+        window title or, in some terminals, set the clipboard (OSC 52).
+        ANSI CSI and OSC sequences are removed whole, then every remaining C0/C1 control
+        character except line feed and tab. Carriage returns are removed too, so a line
+        cannot overwrite itself.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([AllowNull()][AllowEmptyString()][string]$Text)
+
+    if ([string]::IsNullOrEmpty($Text)) { return $Text }
+    $clean = $Text -replace '\x1B\][^\x07\x1B]*(\x07|\x1B\\)?', ''            # OSC ... BEL / ST
+    $clean = $clean -replace '(\x1B\[|\x9B)[0-?]*[ -/]*[@-~]', ''             # CSI ... final byte
+    $clean = $clean -replace '\x1B[@-_]?', ''                                 # other ESC sequences
+    $clean = $clean -replace '\r\n', "`n"
+    return ($clean -replace '[\x00-\x08\x0B-\x1F\x7F-\x9F]', '')
+}
+
+function Write-HermesHost {
+    <#
+    .SYNOPSIS
+        Write-Host with control sequences removed from the text (see ConvertTo-ConsoleSafeText).
+        All module output goes through here; it takes the same parameters as Write-Host.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
+        [object[]]$Object,
+        [switch]$NoNewline,
+        [object]$Separator,
+        $ForegroundColor,
+        $BackgroundColor
+    )
+
+    if ($PSBoundParameters.ContainsKey('Object')) {
+        $PSBoundParameters['Object'] = @($Object | ForEach-Object { ConvertTo-ConsoleSafeText -Text ([string]$_) })
+    }
+    Write-Host @PSBoundParameters
+}
+
 function Get-ConsoleBorder {
     <#
     .SYNOPSIS

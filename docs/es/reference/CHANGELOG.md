@@ -22,9 +22,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [2.2.0] - 2026-11-13
+## [2.2.0] - 2026-11-14
+
+### Seguridad
+- **Secuencias de escape en los datos mostrados.** El texto se escribía en la consola tal cual, así que un
+  dato mostrado en una tabla, lista, menú o mensaje (un nombre de archivo, una línea de log, la respuesta
+  de una API) podía llevar secuencias de escape que cambian el color u ocultan texto, mueven el cursor para
+  sobrescribir líneas anteriores, cambian el título de la ventana o, en algunos terminales, escriben en el
+  portapapeles (OSC 52). Ahora toda la salida de los componentes pasa por una función que elimina las
+  secuencias ANSI CSI/OSC, los retornos de carro y el resto de caracteres de control.
+- **Entrada de menús.** `Read-ConsoleMultiChoice` devolvía la última opción si se escribía `0`, y tanto esa
+  función como `Read-ConsoleChoice` fallaban con números demasiado grandes para `[int]`. Ahora solo se
+  acepta `1..N`, cada opción se devuelve una vez y un número no válido vuelve a preguntar.
 
 ### Corregido
+- `Invoke-ConsoleSpinner` elimina su job en segundo plano al terminar o si se interrumpe.
+- `Show-ConsoleMenu` ignora un prefijo `{Color}` desconocido en vez de fallar.
 - Instalación desde la PowerShell Gallery: el paquete se construye ahora desde `output/HermesConsoleUI`
   y solo contiene los archivos del módulo. Los paquetes anteriores incluían `.git`, tests y docs.
 - Carga en Windows PowerShell 5.1: los archivos con caracteres no ASCII se guardan ahora en UTF-8 con BOM.

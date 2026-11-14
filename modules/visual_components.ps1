@@ -61,7 +61,7 @@ function Show-ConsoleList {
     if ($ReturnLines) { return $lines }
     
     foreach ($l in $lines) {
-        Write-Host "  $l" -ForegroundColor $Color
+        Write-HermesHost "  $l" -ForegroundColor $Color
     }
 }
 
@@ -80,14 +80,14 @@ function Write-ConsoleTree {
     $pipe = $VBar + '   '
 
     foreach ($key in $TreeData.Keys) {
-        Write-Host ($Indent + $branch + $key) -ForegroundColor Cyan
+        Write-HermesHost ($Indent + $branch + $key) -ForegroundColor Cyan
         $val = $TreeData[$key]
         if ($val -is [hashtable]) {
             Write-ConsoleTree -TreeData $val -Indent ($Indent + $pipe)
         }
         elseif ($val -is [array] -or $val -is [string]) {
             foreach ($item in $val) {
-                Write-Host ($Indent + $pipe + $leaf + $item) -ForegroundColor Gray
+                Write-HermesHost ($Indent + $pipe + $leaf + $item) -ForegroundColor Gray
             }
         }
     }
@@ -137,8 +137,8 @@ function Write-ConsoleChart {
         return @($fullLine)
     }
     
-    Write-Host ('  ' + $Label) -NoNewline -ForegroundColor White
-    Write-Host (': ' + $percent + '% [' + $bar + ']') -ForegroundColor $Color
+    Write-HermesHost ('  ' + $Label) -NoNewline -ForegroundColor White
+    Write-HermesHost (': ' + $percent + '% [' + $bar + ']') -ForegroundColor $Color
 }
 
 function Write-ConsoleSparkline {
@@ -181,13 +181,13 @@ function Write-ConsoleSparkline {
             
             if ($ShowMinMax) {
                 if ($value -eq $min) {
-                    Write-Host $chars[$normalized] -NoNewline -ForegroundColor Red
+                    Write-HermesHost $chars[$normalized] -NoNewline -ForegroundColor Red
                 }
                 elseif ($value -eq $max) {
-                    Write-Host $chars[$normalized] -NoNewline -ForegroundColor Green
+                    Write-HermesHost $chars[$normalized] -NoNewline -ForegroundColor Green
                 }
                 else {
-                    Write-Host $chars[$normalized] -NoNewline -ForegroundColor $Color
+                    Write-HermesHost $chars[$normalized] -NoNewline -ForegroundColor $Color
                 }
             }
             else {
@@ -196,10 +196,10 @@ function Write-ConsoleSparkline {
         }
         
         if (-not $ShowMinMax) {
-            Write-Host ('  ' + $sparkline) -ForegroundColor $Color
+            Write-HermesHost ('  ' + $sparkline) -ForegroundColor $Color
         }
         else {
-            Write-Host ''
+            Write-HermesHost ''
         }
     }
 }
@@ -254,22 +254,22 @@ function Write-ConsolePanel {
     $innerWidth = $Width - 4
     
     # Top border with title
-    Write-Host ''
+    Write-HermesHost ''
     if ($Title) {
         $titleLen = $Title.Length + 2
         $leftLen = [Math]::Floor(($Width - $titleLen - 2) / 2)
         $rightLen = $Width - $titleLen - $leftLen - 2
         
-        Write-Host ('  ' + $b.TopLeft + (([string]$b.Horizontal) * $leftLen) + ' ' + $Title + ' ' + (([string]$b.Horizontal) * $rightLen) + $b.TopRight) -ForegroundColor $Color
+        Write-HermesHost ('  ' + $b.TopLeft + (([string]$b.Horizontal) * $leftLen) + ' ' + $Title + ' ' + (([string]$b.Horizontal) * $rightLen) + $b.TopRight) -ForegroundColor $Color
     }
     else {
-        Write-Host ('  ' + $b.TopLeft + (([string]$b.Horizontal) * ($Width - 2)) + $b.TopRight) -ForegroundColor $Color
+        Write-HermesHost ('  ' + $b.TopLeft + (([string]$b.Horizontal) * ($Width - 2)) + $b.TopRight) -ForegroundColor $Color
     }
     
     # Get content lines
     $contentLines = @()
     if ($Content -is [scriptblock]) {
-        # Execute scriptblock and capture return values (not Write-Host)
+        # Execute scriptblock and capture return values (not Write-HermesHost)
         $contentLines = @(& $Content)
     }
     elseif ($Content -is [array]) {
@@ -281,7 +281,7 @@ function Write-ConsolePanel {
     
     # Display content with borders
     if ($contentLines.Count -eq 0) {
-        Write-Host ('  ' + $b.Vertical + (' ' * ($Width - 2)) + $b.Vertical) -ForegroundColor $Color
+        Write-HermesHost ('  ' + $b.Vertical + (' ' * ($Width - 2)) + $b.Vertical) -ForegroundColor $Color
     }
     else {
         foreach ($line in $contentLines) {
@@ -290,15 +290,15 @@ function Write-ConsolePanel {
                 $trimmed = $trimmed.Substring(0, $innerWidth)
             }
             $padding = ' ' * ($innerWidth - $trimmed.Length)
-            Write-Host ('  ' + $b.Vertical + ' ') -NoNewline -ForegroundColor $Color
-            Write-Host $trimmed -NoNewline
-            Write-Host (' ' + $padding + $b.Vertical) -ForegroundColor $Color
+            Write-HermesHost ('  ' + $b.Vertical + ' ') -NoNewline -ForegroundColor $Color
+            Write-HermesHost $trimmed -NoNewline
+            Write-HermesHost (' ' + $padding + $b.Vertical) -ForegroundColor $Color
         }
     }
     
     # Bottom border
-    Write-Host ('  ' + $b.BottomLeft + (([string]$b.Horizontal) * ($Width - 2)) + $b.BottomRight) -ForegroundColor $Color
-    Write-Host ''
+    Write-HermesHost ('  ' + $b.BottomLeft + (([string]$b.Horizontal) * ($Width - 2)) + $b.BottomRight) -ForegroundColor $Color
+    Write-HermesHost ''
 }
 
 function Write-ConsoleBox {
@@ -343,11 +343,11 @@ function Write-ConsoleBox {
         return $lines
     }
     
-    Write-Host ''
+    Write-HermesHost ''
     foreach ($l in $lines) {
-        Write-Host $l -ForegroundColor $Color
+        Write-HermesHost $l -ForegroundColor $Color
     }
-    Write-Host ''
+    Write-HermesHost ''
 }
 
 

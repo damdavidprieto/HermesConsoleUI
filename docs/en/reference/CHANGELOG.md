@@ -22,9 +22,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [2.2.0] - 2026-11-13
+## [2.2.0] - 2026-11-14
+
+### Security
+- **Terminal escape sequences in displayed data.** Text was written to the console as-is, so data
+  shown in a table, list, menu or message (a file name, a log line, an API response) could contain
+  escape sequences that recolor or hide output, move the cursor to overwrite earlier lines, change the
+  window title or, in some terminals, set the clipboard (OSC 52). All component output now goes through
+  one function that removes ANSI CSI/OSC sequences, carriage returns and other control characters.
+- **Menu input.** `Read-ConsoleMultiChoice` returned the last option when the user typed `0`, and both
+  it and `Read-ConsoleChoice` threw on numbers too large for `[int]`. Only `1..N` is accepted now, each
+  option is returned once, and an invalid number asks again.
 
 ### Fixed
+- `Invoke-ConsoleSpinner` removes its background job when it finishes or is interrupted.
+- `Show-ConsoleMenu` ignores an unknown `{Color}` prefix instead of failing.
 - Installation from the PowerShell Gallery: the package is now built from `output/HermesConsoleUI`
   and contains only the module files. Earlier packages were packed from the repository folder and
   included `.git`, tests and docs.

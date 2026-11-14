@@ -51,11 +51,11 @@ function Write-ConsoleTitle {
     # Get centered text (helpers handles sanitization)
     $centeredTitle = Get-CenteredText -Text $Title -Width $width
     
-    Write-Host ''
-    Write-Host $border -ForegroundColor $Color
-    Write-Host $centeredTitle -ForegroundColor $Color
-    Write-Host $border -ForegroundColor $Color
-    Write-Host ''
+    Write-HermesHost ''
+    Write-HermesHost $border -ForegroundColor $Color
+    Write-HermesHost $centeredTitle -ForegroundColor $Color
+    Write-HermesHost $border -ForegroundColor $Color
+    Write-HermesHost ''
 }
 
 function Write-ConsoleHeader {
@@ -88,9 +88,9 @@ function Write-ConsoleHeader {
         [string]$Color = 'Yellow'
     )
     
-    Write-Host ''
-    Write-Host ('>>> ' + $Text) -ForegroundColor $Color
-    Write-Host ''
+    Write-HermesHost ''
+    Write-HermesHost ('>>> ' + $Text) -ForegroundColor $Color
+    Write-HermesHost ''
 }
 
 function Write-ConsoleSubtitle {
@@ -134,11 +134,11 @@ function Write-ConsoleSubtitle {
         [string]$Color = 'Cyan'
     )
     
-    Write-Host ''
+    Write-HermesHost ''
     if ($Count -ge 0) {
-        Write-Host ('  [' + $Text + ' (' + $Count + ')]') -ForegroundColor $Color
+        Write-HermesHost ('  [' + $Text + ' (' + $Count + ')]') -ForegroundColor $Color
     } else {
-        Write-Host ('  [' + $Text + ']') -ForegroundColor $Color
+        Write-HermesHost ('  [' + $Text + ']') -ForegroundColor $Color
     }
 }
 
@@ -173,7 +173,7 @@ function Write-ConsoleError {
     
     process {
         $icon = Get-ComponentIcon -ComponentType 'Error'
-        Write-Host ('  ' + $icon + ' ERROR: ' + $Message) -ForegroundColor Red
+        Write-HermesHost ('  ' + $icon + ' ERROR: ' + $Message) -ForegroundColor Red
     }
 }
 
@@ -214,7 +214,7 @@ function Write-ConsoleInfo {
     
     process {
         $icon = Get-ComponentIcon -ComponentType 'Info'
-        Write-Host ('  ' + $icon + ' ' + $Message) -ForegroundColor $Color
+        Write-HermesHost ('  ' + $icon + ' ' + $Message) -ForegroundColor $Color
     }
 }
 
@@ -262,7 +262,7 @@ function Write-ConsoleStatus {
             'Error'   { Get-ComponentIcon -ComponentType 'Error';   $color = 'Red'; break }
             default   { Get-ComponentIcon -ComponentType 'Info';    $color = 'Cyan' }
         }
-        Write-Host ('  ' + $icon + ' ' + $Message) -ForegroundColor $color
+        Write-HermesHost ('  ' + $icon + ' ' + $Message) -ForegroundColor $color
     }
 }
 
@@ -303,13 +303,13 @@ function Write-ConsoleMetadata {
     
     $icon = Get-ComponentIcon -ComponentType 'Metadata'
     
-    Write-Host ''
-    Write-Host "  $icon [CONFIG] $Title" -ForegroundColor Gray
+    Write-HermesHost ''
+    Write-HermesHost "  $icon [CONFIG] $Title" -ForegroundColor Gray
     foreach ($key in $Metadata.Keys) {
-        Write-Host ('    ' + [char]0x2022 + ' ' + $key + ': ') -NoNewline -ForegroundColor Gray
-        Write-Host ([string]$Metadata[$key]) -ForegroundColor White
+        Write-HermesHost ('    ' + [char]0x2022 + ' ' + $key + ': ') -NoNewline -ForegroundColor Gray
+        Write-HermesHost ([string]$Metadata[$key]) -ForegroundColor White
     }
-    Write-Host ''
+    Write-HermesHost ''
 }
 
 function Write-ConsoleSummary {
@@ -351,20 +351,20 @@ function Write-ConsoleSummary {
     $icon = Get-ComponentIcon -ComponentType 'Summary'
     $separator = [char]0x2501  # ━
     
-    Write-Host ''
-    Write-Host "  $icon [RESULTS] $Title" -ForegroundColor Cyan
-    Write-Host ('  ' + ($separator.ToString() * ($Title.Length + 12))) -ForegroundColor DarkGray
+    Write-HermesHost ''
+    Write-HermesHost "  $icon [RESULTS] $Title" -ForegroundColor Cyan
+    Write-HermesHost ('  ' + ($separator.ToString() * ($Title.Length + 12))) -ForegroundColor DarkGray
     foreach ($item in $Items) {
         $bullet = [char]0x25B8  # ▸
         if ($item.Color) {
-            Write-Host ('    ' + $bullet + ' ' + $item.Label + ': ' + $item.Value) -ForegroundColor $item.Color
+            Write-HermesHost ('    ' + $bullet + ' ' + $item.Label + ': ' + $item.Value) -ForegroundColor $item.Color
         } else {
-            Write-Host ('    ' + $bullet + ' ' + $item.Label + ': ') -NoNewline -ForegroundColor Gray
-            Write-Host ([string]$item.Value) -ForegroundColor White
+            Write-HermesHost ('    ' + $bullet + ' ' + $item.Label + ': ') -NoNewline -ForegroundColor Gray
+            Write-HermesHost ([string]$item.Value) -ForegroundColor White
         }
     }
-    Write-Host ('  ' + ($separator.ToString() * ($Title.Length + 12))) -ForegroundColor DarkGray
-    Write-Host ''
+    Write-HermesHost ('  ' + ($separator.ToString() * ($Title.Length + 12))) -ForegroundColor DarkGray
+    Write-HermesHost ''
 }
 
 function Write-ConsoleDiff {
@@ -406,10 +406,10 @@ function Write-ConsoleDiff {
         [string]$NewValue
     )
     
-    Write-Host ('  ' + $Label + ':') -ForegroundColor Cyan
-    Write-Host ('    [-] Previous: ' + $OldValue) -ForegroundColor Red
-    Write-Host ('    [+] Current:  ' + $NewValue) -ForegroundColor Green
-    Write-Host ''
+    Write-HermesHost ('  ' + $Label + ':') -ForegroundColor Cyan
+    Write-HermesHost ('    [-] Previous: ' + $OldValue) -ForegroundColor Red
+    Write-HermesHost ('    [+] Current:  ' + $NewValue) -ForegroundColor Green
+    Write-HermesHost ''
 }
 
 function Write-ConsoleSeparator {
@@ -452,7 +452,7 @@ function Write-ConsoleSeparator {
         [string]$Color = 'DarkGray'
     )
     
-    Write-Host ('  ' + ($Character * $Length)) -ForegroundColor $Color
+    Write-HermesHost ('  ' + ($Character * $Length)) -ForegroundColor $Color
 }
 
 function Write-ConsoleBreadcrumb {
@@ -496,5 +496,5 @@ function Write-ConsoleBreadcrumb {
     )
     
     $breadcrumb = $Path -join $Separator
-    Write-Host ('  ' + $breadcrumb) -ForegroundColor $Color
+    Write-HermesHost ('  ' + $breadcrumb) -ForegroundColor $Color
 }
