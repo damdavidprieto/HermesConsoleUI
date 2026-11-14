@@ -1,11 +1,7 @@
-﻿<#
-.SYNOPSIS
-    PSConsoleUI - Helper Functions
-    
-.DESCRIPTION
-    Core helper functions used by UI components.
-    Includes: Border generation, text centering, value limiting, data validation.
-#>
+# HermesConsoleUI - private helper functions.
+#
+# Used by the public components: safe console output, theme and locale lookups,
+# text centering, icons and the layout column merge. Nothing here is exported.
 
 function ConvertTo-ConsoleSafeText {
     <#
@@ -36,8 +32,11 @@ function Write-HermesHost {
     <#
     .SYNOPSIS
         Write-Host with control sequences removed from the text (see ConvertTo-ConsoleSafeText).
+    .DESCRIPTION
         All module output goes through here; it takes the same parameters as Write-Host.
+        A console UI library writes to the host by design, so the analyzer rule is suppressed.
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification = 'Console UI components write to the host by design.')]
     [CmdletBinding()]
     param(
         [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
@@ -54,321 +53,181 @@ function Write-HermesHost {
     Write-Host @PSBoundParameters
 }
 
-function Get-ConsoleBorder {
+function Resolve-UIColor {
     <#
     .SYNOPSIS
-        Generates border characters for console UI elements.
-    
-    .PARAMETER Width
-        The width of the border.
-    
-    .PARAMETER Style
-        The border style: Single, Double, Rounded, or Heavy.
-    
-    .PARAMETER Part
-        The part of the border: Top, Bottom, Left, Right, TopLeft, TopRight, BottomLeft, BottomRight, Horizontal, Vertical.
+        Returns the color the caller passed, or the active theme's color for the given role.
+    .DESCRIPTION
+        Components call this for every color parameter, so Set-ConsoleTheme changes their
+        default colors while an explicit -Color still wins.
     #>
     [CmdletBinding()]
+    [OutputType([string])]
     param(
-        [Parameter(Mandatory=$false)]
-        [int]$Width = 60,
-        
-        [Parameter(Mandatory=$false)]
-        [ValidateSet('Single', 'Double', 'Rounded', 'Heavy')]
-        [string]$Style = 'Single',
-        
-        [Parameter(Mandatory=$false)]
-        [ValidateSet('Top', 'Bottom', 'Left', 'Right', 'TopLeft', 'TopRight', 'BottomLeft', 'BottomRight', 'Horizontal', 'Vertical', 'Full')]
-        [string]$Part = 'Horizontal'
+        [AllowNull()][AllowEmptyString()][string]$Color,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Primary', 'Secondary', 'Success', 'Warning', 'Error', 'Info', 'Muted', 'Highlight')]
+        [string]$Role
     )
-    
-    $borders = @{
-        'Single' = @{
-            Horizontal = [char]0x2500
-            Vertical = [char]0x2502
-            TopLeft = [char]0x250C
-            TopRight = [char]0x2510
-            BottomLeft = [char]0x2514
-            BottomRight = [char]0x2518
-        }
-        'Double' = @{
-            Horizontal = [char]0x2550
-            Vertical = [char]0x2551
-            TopLeft = [char]0x2554
-            TopRight = [char]0x2557
-            BottomLeft = [char]0x255A
-            BottomRight = [char]0x255D
-        }
-        'Rounded' = @{
-            Horizontal = [char]0x2500
-            Vertical = [char]0x2502
-            TopLeft = [char]0x256D
-            TopRight = [char]0x256E
-            BottomLeft = [char]0x2570
-            BottomRight = [char]0x256F
-        }
-        'Heavy' = @{
-            Horizontal = [char]0x2501
-            Vertical = [char]0x2503
-            TopLeft = [char]0x250F
-            TopRight = [char]0x2513
-            BottomLeft = [char]0x2517
-            BottomRight = [char]0x251B
-        }
-    }
-    
-    $b = $borders[$Style]
-    
-    switch ($Part) {
-        'Horizontal' { return ([string]$b.Horizontal) * $Width }
-        'Vertical' { return $b.Vertical }
-        'TopLeft' { return $b.TopLeft }
-        'TopRight' { return $b.TopRight }
-        'BottomLeft' { return $b.BottomLeft }
-        'BottomRight' { return $b.BottomRight }
-        'Top' { return $b.TopLeft + (([string]$b.Horizontal) * ($Width - 2)) + $b.TopRight }
-        'Bottom' { return $b.BottomLeft + (([string]$b.Horizontal) * ($Width - 2)) + $b.BottomRight }
-        'Full' { return $b }
-    }
+
+    if (-not [string]::IsNullOrWhiteSpace($Color)) { return $Color }
+    return (Get-UIColor -ColorType $Role -WarningAction SilentlyContinue)
+}
+
+function Get-UIText {
+    <#
+    .SYNOPSIS
+        Returns a localized UI string, or the English default if the key is missing.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)][string]$Key,
+        [Parameter(Mandatory = $true)][string]$Default
+    )
+
+    $text = Get-LocalizedString -Key $Key -DefaultValue $Default -WarningAction SilentlyContinue
+    if ([string]::IsNullOrEmpty($text)) { return $Default }
+    return [string]$text
+}
+
+function Test-ClearScreenAllowed {
+    <#
+    .SYNOPSIS
+        True unless clearing the screen has been turned off for this session.
+    .DESCRIPTION
+        Set $env:HERMESCONSOLEUI_NOCLEAR to 1 (or true) to keep earlier output on screen,
+        for example while debugging. $Global:CassielDevMode is still honoured for
+        compatibility with Cassiel, which used it before this setting existed.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'Read-only compatibility with Cassiel, which sets this variable.')]
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    if ($env:HERMESCONSOLEUI_NOCLEAR -match '^(1|true|yes)$') { return $false }
+    if ($Global:CassielDevMode) { return $false }
+    return $true
 }
 
 function Get-CenteredText {
     <#
     .SYNOPSIS
         Centers text within a specified width.
-    
-    .PARAMETER Text
-        The text to center.
-    
-    .PARAMETER Width
-        The total width to center within.
     #>
     [CmdletBinding()]
+    [OutputType([string])]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Text,
-        
-        [Parameter(Mandatory=$true)]
+
+        [Parameter(Mandatory = $true)]
         [int]$Width
     )
-    
-    
-    # Sanitizar input: eliminar caracteres nulos y no imprimibles que causan bugs visuales
-    $cleanText = $Text -replace '[^\x20-\x7E]', ''
-    $cleanText = $cleanText.Trim()
-    
-    # Prevenir padding negativo
+
+    # Only control sequences are removed: accented letters and other non-ASCII text stay.
+    $cleanText = (ConvertTo-ConsoleSafeText -Text $Text).Trim()
     if ($cleanText.Length -ge $Width) { return $cleanText }
 
     $padding = ' ' * [Math]::Floor(($Width - $cleanText.Length) / 2)
     return "$padding$cleanText"
 }
 
-function Limit-Value {
-    <#
-    .SYNOPSIS
-        Limits a value to a specified range.
-    
-    .PARAMETER Value
-        The value to limit.
-    
-    .PARAMETER Min
-        The minimum allowed value.
-    
-    .PARAMETER Max
-        The maximum allowed value.
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [int]$Value,
-        
-        [Parameter(Mandatory=$true)]
-        [int]$Min,
-        
-        [Parameter(Mandatory=$true)]
-        [int]$Max
-    )
-    
-    return [Math]::Max($Min, [Math]::Min($Max, $Value))
-}
-
-function Test-ConsoleData {
-    <#
-    .SYNOPSIS
-        Validates data for console UI functions.
-    
-    .PARAMETER Data
-        The data to validate.
-    
-    .PARAMETER FunctionName
-        The name of the calling function (for error messages).
-    
-    .PARAMETER AllowEmpty
-        Whether to allow empty data.
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$false)]
-        $Data,
-        
-        [Parameter(Mandatory=$true)]
-        [string]$FunctionName,
-        
-        [Parameter(Mandatory=$false)]
-        [switch]$AllowEmpty
-    )
-    
-    if (-not $Data) {
-        Write-Warning "${FunctionName}: No data provided"
-        return $false
-    }
-    
-    return $true
-}
-
 function Test-EmojiSupport {
     <#
     .SYNOPSIS
-        Tests if the current console supports emoji characters.
-    
-    .DESCRIPTION
-        Attempts to detect if the console can properly display emoji Unicode characters.
-        Returns true if emojis are supported, false otherwise.
+        Tests whether the current console is likely to display emoji characters.
     #>
     [CmdletBinding()]
+    [OutputType([bool])]
     param()
-    
+
     try {
-        # Check PowerShell version (Core 6+ has better emoji support)
-        if ($PSVersionTable.PSVersion.Major -ge 6) {
-            return $true
-        }
-        
-        # Check if OutputEncoding supports UTF-8
-        if ([Console]::OutputEncoding.CodePage -eq 65001) {
-            return $true
-        }
-        
-        # Default to false for older systems
-        return $false
-    } catch {
+        if ($PSVersionTable.PSVersion.Major -ge 6) { return $true }
+        return ([Console]::OutputEncoding.CodePage -eq 65001)
+    }
+    catch {
         return $false
     }
 }
 
-
-function Set-LayoutBuffer {
+function Merge-LayoutColumn {
     <#
     .SYNOPSIS
-        Merges multiple string arrays (columns) into a single line-by-line buffer.
+        Merges several columns (arrays of lines) into one array of padded lines.
     #>
+    [CmdletBinding()]
+    [OutputType([string[]])]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [array]$Columns,
-        
-        [Parameter(Mandatory=$true)]
+
+        [Parameter(Mandatory = $true)]
         [array]$Widths
     )
-    
-    # Find max depth (lines) across all columns
+
     $maxLines = 0
     foreach ($col in $Columns) {
         if ($col.Count -gt $maxLines) { $maxLines = $col.Count }
     }
-    
+
+    $expectedTotal = ($Widths | Measure-Object -Sum).Sum + (($Columns.Count - 1) * 2)
     $mergedLines = @()
     for ($i = 0; $i -lt $maxLines; $i++) {
-        $line = ""
+        $line = ''
         for ($c = 0; $c -lt $Columns.Count; $c++) {
             $colContent = $Columns[$c]
             $width = $Widths[$c]
-            
-            # Get specific line or empty space
-            $content = ""
+
+            $content = ''
             if ($null -ne $colContent -and $colContent -is [array] -and $i -lt $colContent.Count) {
-                $content = $colContent[$i].ToString()
+                $content = [string]$colContent[$i]
             }
-            
-            # Pad content to fit column width
-            # Remove only non-printable control characters (0-31), keep everything else
-            $cleanContent = $content -replace '[\x00-\x1F]', '' 
+
+            $cleanContent = (ConvertTo-ConsoleSafeText -Text $content) -replace '[\n\t]', ' '
             if ($cleanContent.Length -gt $width) {
                 $cleanContent = $cleanContent.Substring(0, $width)
             }
-            $padding = ' ' * [Math]::Max(0, ($width - $cleanContent.Length))
-            $line += $cleanContent + $padding + '  ' # 2 space gap between columns
+            $line += $cleanContent + (' ' * [Math]::Max(0, ($width - $cleanContent.Length))) + '  '
         }
-        
-        # Pad entire line to ensure it clears previous output residue ("Ghosting")
-        $expectedTotal = ($Widths | Measure-Object -Sum).Sum + (($Columns.Count - 1) * 2)
+
+        # Pad the whole line so it overwrites any longer line left on screen.
         $finalLine = $line.TrimEnd()
-        $linePadding = ' ' * [Math]::Max(0, ($expectedTotal - $finalLine.Length))
-        $mergedLines += ($finalLine + $linePadding)
+        $mergedLines += ($finalLine + (' ' * [Math]::Max(0, ($expectedTotal - $finalLine.Length))))
     }
     return $mergedLines
 }
 
-function Invoke-CapturedOutput {
-    <#
-    .SYNOPSIS
-        Executes a scriptblock and returns its output as an array of lines.
-        Note: This only works with functions updated to support -ReturnLines.
-    #>
-    param([scriptblock]$Code)
-    
-    $output = @()
-    & $Code | ForEach-Object { $output += $_ }
-    return $output
-}
-
-
 function Get-ComponentIcon {
     <#
     .SYNOPSIS
-        Returns appropriate icon for a component based on console capabilities.
-    
-    .DESCRIPTION
-        Returns emoji icons if supported, falls back to safe Unicode icons otherwise.
-        Implements automatic Versión B/C fallback strategy.
-    
-    .PARAMETER ComponentType
-        Type of component: Metadata, Summary, Success, Warning, Error, Info
+        Returns the icon for a component, using emoji only when the console supports them.
     #>
     [CmdletBinding()]
+    [OutputType([string])]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [ValidateSet('Metadata', 'Summary', 'Success', 'Warning', 'Error', 'Info')]
         [string]$ComponentType
     )
-    
-    # Safe icons that work everywhere (Unicode BMP)
+
+    # Safe icons that render in every console font (Unicode BMP).
     $safeIcons = @{
-        Metadata = [char]0x2699    # ⚙
-        Summary = [char]0x25A3     # ▣
-        Success = [char]0x221A     # √
-        Warning = [char]0x26A0     # ⚠
-        Error   = [char]0x2715     # ✕
-        Info    = '[i]'            # Bracketed style as per user preference
+        Metadata = [string][char]0x2699    # gear
+        Summary  = [string][char]0x25A3    # square
+        Success  = [string][char]0x221A    # check root
+        Warning  = [string][char]0x26A0    # warning sign
+        Error    = [string][char]0x2715    # multiplication x
+        Info     = '[i]'
     }
-    
-    # Try to use emoji if supported
-    if (Test-EmojiSupport) {
-        try {
-            switch ($ComponentType) {
-                'Summary' { return [System.Char]::ConvertFromUtf32(0x1F4CA) } # 📊
-                'Success' { return [char]0x2714 } # ✔
-                'Warning' { return [char]0x26A0 } # ⚠
-                'Error'   { return [char]0x2716 } # ✖
-                'Info'    { return '[i]' }        # Bracketed style as per user preference
-                default   { return $safeIcons[$ComponentType] }
-            }
-        } catch {
-            return $safeIcons[$ComponentType]
-        }
-    } else {
-        return $safeIcons[$ComponentType]
+
+    if (-not (Test-EmojiSupport)) { return $safeIcons[$ComponentType] }
+
+    switch ($ComponentType) {
+        'Summary' { return [System.Char]::ConvertFromUtf32(0x1F4CA) }   # bar chart
+        'Success' { return [string][char]0x2714 }                       # heavy check
+        'Error'   { return [string][char]0x2716 }                       # heavy x
+        default   { return $safeIcons[$ComponentType] }
     }
 }
-
-# No local Export-ModuleMember here - handled by main module

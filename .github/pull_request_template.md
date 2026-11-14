@@ -17,9 +17,9 @@ Closes #(issue number)
 
 ## Changes Made
 <!-- List the specific changes made in this PR -->
-- 
-- 
-- 
+-
+-
+-
 
 ## Testing
 <!-- Describe the tests you ran to verify your changes -->
@@ -29,8 +29,8 @@ Closes #(issue number)
 - [ ] Tested on multiple PowerShell versions (if applicable)
 
 ### Test Environment
-- PowerShell Version: 
-- OS: 
+- PowerShell Version:
+- OS:
 - Test Results:
 ```powershell
 # Paste test results here

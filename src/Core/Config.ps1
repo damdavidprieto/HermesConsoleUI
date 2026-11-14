@@ -1,11 +1,7 @@
-﻿<#
-.SYNOPSIS
-    PSConsoleUI Configuration System
-    
-.DESCRIPTION
-    Manages UI configuration including themes, colors, icons, and component defaults.
-    Loads configuration from JSON and provides runtime access and modification.
-#>
+﻿# HermesConsoleUI configuration: themes, colors and icons.
+#
+# Manages UI configuration including themes, colors, icons, and component defaults.
+# Loads configuration from JSON and provides runtime access and modification.
 
 # Module-level variables
 $script:UIConfig = $null
@@ -80,33 +76,34 @@ function Initialize-UIConfig {
     <#
     .SYNOPSIS
         Initializes the UI configuration system.
-    
+
     .DESCRIPTION
         Loads configuration from JSON file. Falls back to default configuration if file not found.
-    
+
     .PARAMETER ConfigPath
         Optional path to the configuration file. Defaults to config/ui_config.json.
-    
+
     .EXAMPLE
         Initialize-UIConfig
-        
+
         Loads configuration from default location.
     #>
     [CmdletBinding()]
     param(
         [string]$ConfigPath = $null
     )
-    
+
     # Determine config path
     if (-not $ConfigPath) {
         $moduleRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $ConfigPath = Join-Path $moduleRoot 'config\ui_config.json'
     }
-    
+
     # Load configuration
     if (Test-Path $ConfigPath) {
         try {
-            $configContent = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
+            # -Encoding UTF8: Windows PowerShell 5.1 reads files without a BOM as ANSI otherwise.
+            $configContent = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
             # Convert PSCustomObject to hashtable for easier manipulation
             $script:UIConfig = ConvertTo-Hashtable -InputObject $configContent
             Write-Verbose "Configuration loaded from: $ConfigPath"
@@ -126,16 +123,17 @@ function ConvertTo-Hashtable {
     <#
     .SYNOPSIS
         Converts PSCustomObject to Hashtable recursively.
-    
+
     .DESCRIPTION
         Helper function to convert JSON objects to hashtables for easier manipulation.
     #>
     [CmdletBinding()]
+    [OutputType([hashtable], [object[]], [object])]
     param(
         [Parameter(Mandatory=$true)]
         $InputObject
     )
-    
+
     if ($InputObject -is [PSCustomObject]) {
         $hash = @{}
         foreach ($property in $InputObject.PSObject.Properties) {
@@ -157,41 +155,41 @@ function Get-UIConfig {
     <#
     .SYNOPSIS
         Gets the current UI configuration.
-    
+
     .DESCRIPTION
         Returns the entire configuration object or a specific section.
-    
+
     .PARAMETER Section
         Optional section path (e.g., "UILibrary.ColorScheme.Default").
-    
+
     .EXAMPLE
         Get-UIConfig
-        
+
         Returns entire configuration.
-    
+
     .EXAMPLE
         Get-UIConfig -Section "UILibrary.ActiveTheme"
-        
+
         Returns "Default".
     #>
     [CmdletBinding()]
     param(
         [string]$Section = $null
     )
-    
+
     if (-not $script:UIConfig) {
         Write-Warning "Configuration not initialized. Call Initialize-UIConfig first."
         return $null
     }
-    
+
     if (-not $Section) {
         return $script:UIConfig
     }
-    
+
     # Navigate nested keys
     $keys = $Section -split '\.'
     $value = $script:UIConfig
-    
+
     foreach ($key in $keys) {
         if ($value -is [hashtable] -and $value.ContainsKey($key)) {
             $value = $value[$key]
@@ -200,7 +198,7 @@ function Get-UIConfig {
             return $null
         }
     }
-    
+
     return $value
 }
 
@@ -208,37 +206,38 @@ function Get-UIColor {
     <#
     .SYNOPSIS
         Gets a color from the active theme.
-    
+
     .DESCRIPTION
         Retrieves a color value from the active theme's color scheme.
-    
+
     .PARAMETER ColorType
         The type of color to retrieve (Primary, Success, Warning, Error, Info, etc.).
-    
+
     .PARAMETER Theme
         Optional theme name to use instead of active theme.
-    
+
     .EXAMPLE
         Get-UIColor -ColorType "Success"
-        
+
         Returns "Green" (from active theme).
     #>
     [CmdletBinding()]
+    [OutputType([string])]
     param(
         [Parameter(Mandatory=$true)]
         [ValidateSet('Primary', 'Secondary', 'Success', 'Warning', 'Error', 'Info', 'Muted', 'Highlight')]
         [string]$ColorType,
-        
+
         [string]$Theme = $null
     )
-    
+
     if (-not $script:UIConfig) {
         Write-Warning "Configuration not initialized"
         return 'White'
     }
-    
+
     $themeName = if ($Theme) { $Theme } else { $script:UIConfig.UILibrary.ActiveTheme }
-    
+
     $colorScheme = $script:UIConfig.UILibrary.ColorScheme
     if ($colorScheme.ContainsKey($themeName)) {
         $themeColors = $colorScheme[$themeName]
@@ -246,7 +245,7 @@ function Get-UIColor {
             return $themeColors[$ColorType]
         }
     }
-    
+
     Write-Warning "Color '$ColorType' not found in theme '$themeName'"
     return 'White'
 }
@@ -255,35 +254,36 @@ function Get-UIIcon {
     <#
     .SYNOPSIS
         Gets an icon from the configuration.
-    
+
     .DESCRIPTION
         Retrieves an icon string from the component configuration.
-    
+
     .PARAMETER IconType
         The type of icon to retrieve (Success, Warning, Error, Info).
-    
+
     .EXAMPLE
         Get-UIIcon -IconType "Success"
-        
+
         Returns "[+]".
     #>
     [CmdletBinding()]
+    [OutputType([string])]
     param(
         [Parameter(Mandatory=$true)]
         [ValidateSet('Success', 'Warning', 'Error', 'Info')]
         [string]$IconType
     )
-    
+
     if (-not $script:UIConfig) {
         Write-Warning "Configuration not initialized"
         return '[*]'
     }
-    
+
     $icons = $script:UIConfig.UILibrary.Components.Status.Icons
     if ($icons.ContainsKey($IconType)) {
         return $icons[$IconType]
     }
-    
+
     return '[*]'
 }
 
@@ -291,52 +291,52 @@ function Set-ConsoleTheme {
     <#
     .SYNOPSIS
         Changes the active UI theme.
-    
+
     .DESCRIPTION
         Sets the active theme for the UI framework. The theme must exist in the configuration.
-    
+
     .PARAMETER ThemeName
         The theme name to activate (Default, Cyberpunk, Classic, Monochrome, or Custom).
-    
+
     .PARAMETER CustomColors
         Optional hashtable of custom colors when using Custom theme.
-    
+
     .EXAMPLE
         Set-ConsoleTheme -ThemeName "Cyberpunk"
-        
+
         Changes theme to Cyberpunk.
-    
+
     .EXAMPLE
         Set-ConsoleTheme -ThemeName "Custom" -CustomColors @{
             Primary = "DarkCyan"
             Success = "DarkGreen"
             Error = "DarkRed"
         }
-        
+
         Creates and activates a custom theme.
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory=$true)]
         [ValidateSet('Default', 'Cyberpunk', 'Classic', 'Monochrome', 'Custom')]
         [string]$ThemeName,
-        
+
         [hashtable]$CustomColors = @{}
     )
-    
+
     if (-not $script:UIConfig) {
         throw "Configuration not initialized. Call Initialize-UIConfig first."
     }
-    
+
     if ($ThemeName -eq 'Custom') {
         if ($CustomColors.Count -eq 0) {
             throw "CustomColors parameter required when using Custom theme"
         }
-        
+
         # Create custom theme with defaults for missing colors
         $defaultColors = $script:UIConfig.UILibrary.ColorScheme.Default
         $customTheme = @{}
-        
+
         foreach ($colorType in @('Primary', 'Secondary', 'Success', 'Warning', 'Error', 'Info', 'Muted', 'Highlight')) {
             if ($CustomColors.ContainsKey($colorType)) {
                 $customTheme[$colorType] = $CustomColors[$colorType]
@@ -344,13 +344,17 @@ function Set-ConsoleTheme {
                 $customTheme[$colorType] = $defaultColors[$colorType]
             }
         }
-        
-        $script:UIConfig.UILibrary.ColorScheme['Custom'] = $customTheme
+
     } elseif (-not $script:UIConfig.UILibrary.ColorScheme.ContainsKey($ThemeName)) {
         $available = $script:UIConfig.UILibrary.ColorScheme.Keys -join ', '
         throw "Theme '$ThemeName' not found. Available themes: $available"
     }
-    
+
+    if (-not $PSCmdlet.ShouldProcess("theme '$ThemeName'", 'Set active console theme')) { return }
+
+    if ($ThemeName -eq 'Custom') {
+        $script:UIConfig.UILibrary.ColorScheme['Custom'] = $customTheme
+    }
     $script:UIConfig.UILibrary.ActiveTheme = $ThemeName
     Write-Verbose "Active theme changed to: $ThemeName"
 }
@@ -359,49 +363,49 @@ function Get-ConsoleTheme {
     <#
     .SYNOPSIS
         Gets the current active theme name.
-    
+
     .DESCRIPTION
         Returns the name of the currently active theme.
-    
+
     .EXAMPLE
         Get-ConsoleTheme
-        
+
         Returns "Default" (or current active theme).
     #>
     [CmdletBinding()]
+    [OutputType([string])]
     param()
-    
+
     if (-not $script:UIConfig) {
         Write-Warning "Configuration not initialized"
         return $null
     }
-    
+
     return $script:UIConfig.UILibrary.ActiveTheme
 }
 
-function Get-AvailableThemes {
+function Get-AvailableTheme {
     <#
     .SYNOPSIS
         Gets list of available themes.
-    
+
     .DESCRIPTION
-        Returns an array of all available theme names.
-    
+        Returns the names of the themes defined in the configuration, which can be passed
+        to Set-ConsoleTheme. The old name Get-AvailableThemes still works as an alias.
+
     .EXAMPLE
-        Get-AvailableThemes
-        
+        Get-AvailableTheme
+
         Returns @("Default", "Cyberpunk", "Classic", "Monochrome")
     #>
     [CmdletBinding()]
+    [OutputType([string[]], [object[]])]
     param()
-    
+
     if (-not $script:UIConfig) {
         Write-Warning "Configuration not initialized"
         return @()
     }
-    
+
     return @($script:UIConfig.UILibrary.ColorScheme.Keys)
 }
-
-# Export functions
-Export-ModuleMember -Function Initialize-UIConfig, Get-UIConfig, Get-UIColor, Get-UIIcon, Set-ConsoleTheme, Get-ConsoleTheme, Get-AvailableThemes

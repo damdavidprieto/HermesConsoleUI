@@ -1,0 +1,90 @@
+name: CI
+
+# Same workflow in HermesConsoleUI, ArgosCCF and ThemisRules; only the env block changes.
+#  - PowerShell 7 on Windows, Linux and macOS: analysis, tests and build (build.ps1).
+#  - Windows PowerShell 5.1: tests, then the package is installed with Install-Module from a
+#    local repository and must load automatically, the way users get it from the Gallery.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MODULE_NAME: HermesConsoleUI
+  TESTS_PATH: ./tests
+  # A command from the module, run in a new 5.1 session to prove auto-loading works.
+  SMOKE_TEST: "Write-ConsoleStatus -Message 'Auto-loaded' -Type Success; if ((Get-AvailableTheme) -notcontains 'Cyberpunk') { throw 'Themes did not load' }"
+
+jobs:
+  test:
+    name: PowerShell 7 on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Analyze, test and build
+        shell: pwsh
+        run: ./build.ps1 -InstallDependencies
+
+  windows-powershell:
+    name: Windows PowerShell 5.1 and Install-Module
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and pack into a local repository (PowerShell 7)
+        shell: pwsh
+        run: |
+          ./build.ps1 -SkipAnalysis -SkipTests
+          $repo = Join-Path $env:RUNNER_TEMP 'localrepo'
+          New-Item -ItemType Directory -Path $repo -Force | Out-Null
+          Register-PSResourceRepository -Name LocalRepo -Uri $repo -Trusted
+          Publish-PSResource -Path "./output/$env:MODULE_NAME" -Repository LocalRepo
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $entries = [IO.Compression.ZipFile]::OpenRead((Get-ChildItem $repo -Filter *.nupkg).FullName).Entries.FullName
+          $entries
+          if ($entries -match '^(\.git|\.github|tests|docs|examples|logs|output)/') { throw 'Package contains repository-only files' }
+
+      - name: Tests (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSVersionTable.PSVersion
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+          Install-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force -SkipPublisherCheck -Scope CurrentUser
+          Install-Module PSScriptAnalyzer -Force -SkipPublisherCheck -Scope CurrentUser
+          Import-Module Pester -MinimumVersion 5.0.0
+          $config = New-PesterConfiguration
+          $config.Run.Path = $env:TESTS_PATH
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Normal'
+          $config.Output.StackTraceVerbosity = 'Full'
+          Invoke-Pester -Configuration $config
+
+      - name: Install with Install-Module (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Register-PSRepository -Name LocalRepo -SourceLocation (Join-Path $env:RUNNER_TEMP 'localrepo') -InstallationPolicy Trusted
+          Install-Module $env:MODULE_NAME -Repository LocalRepo -Scope CurrentUser
+          Get-Module $env:MODULE_NAME -ListAvailable | Format-Table Name, Version, ModuleBase
+
+      - name: Auto-load without Import-Module (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ([scriptblock]::Create($env:SMOKE_TEST))
+          $module = Get-Module $env:MODULE_NAME
+          if (-not $module) { throw 'Module was not auto-loaded' }
+          "Loaded $($module.Name) $($module.Version) with $($module.ExportedFunctions.Count) functions"

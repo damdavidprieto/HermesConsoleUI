@@ -1,16 +1,27 @@
-﻿<#
+<#
 .SYNOPSIS
     Builds HermesConsoleUI into output/HermesConsoleUI, ready to install or publish.
 
 .DESCRIPTION
-    Runs PSScriptAnalyzer and the Pester tests, then copies only the files the module
-    needs at runtime into output/HermesConsoleUI and validates the result. Publish that
-    folder, never the repository root, so tests, docs and .git never reach the Gallery.
+    Runs PSScriptAnalyzer with PSScriptAnalyzerSettings.psd1 and the Pester tests, then copies
+    only the files the module needs at runtime into output/HermesConsoleUI and validates the
+    result. Publish that folder, never the repository root, so tests, docs and .git never reach
+    the PowerShell Gallery.
+
+.PARAMETER InstallDependencies
+    Install Pester 5 and PSScriptAnalyzer for the current user first.
+
+.PARAMETER SkipAnalysis
+    Do not run PSScriptAnalyzer.
+
+.PARAMETER SkipTests
+    Do not run the Pester tests.
 
 .EXAMPLE
-    ./build.ps1
+    ./build.ps1 -InstallDependencies
+
+.EXAMPLE
     ./build.ps1 -SkipTests
-    Publish-Module -Path ./output/HermesConsoleUI -NuGetApiKey $env:PSGALLERY_API_KEY
 #>
 [CmdletBinding()]
 param(
@@ -21,42 +32,41 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $moduleName = 'HermesConsoleUI'
-$outputDir = Join-Path $PSScriptRoot "output\$moduleName"
+$testsPath = Join-Path $PSScriptRoot 'tests'
+$outputDir = Join-Path $PSScriptRoot "output/$moduleName"
 
-# Files and folders the module loads at runtime (see HermesConsoleUI.psm1).
+# Files and folders the module needs at runtime: everything HermesConsoleUI.psm1 loads.
 $runtimeItems = @(
-    "$moduleName.psd1",
-    "$moduleName.psm1",
-    'LICENSE',
-    'README.md',
-    'config',
-    'src',
-    'modules\helpers.ps1',
-    'modules\text_components.ps1',
-    'modules\visual_components.ps1',
-    'modules\interactive_components.ps1',
-    'modules\layout_components.ps1'
+    "$moduleName.psd1"
+    "$moduleName.psm1"
+    'LICENSE'
+    'README.md'
+    'config'
+    'src'
+    'modules'
 )
 
 if ($InstallDependencies) {
-    Install-Module Pester -MinimumVersion 5.0.0 -Force -SkipPublisherCheck -Scope CurrentUser
+    Install-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force -SkipPublisherCheck -Scope CurrentUser
     Install-Module PSScriptAnalyzer -Force -SkipPublisherCheck -Scope CurrentUser
 }
 
 if (-not $SkipAnalysis) {
     Write-Host 'Running PSScriptAnalyzer...' -ForegroundColor Cyan
-    $issues = Invoke-ScriptAnalyzer -Path $PSScriptRoot -Recurse -Settings PSGallery -Severity Error
+    $settings = Join-Path $PSScriptRoot 'PSScriptAnalyzerSettings.psd1'
+    $sources = $runtimeItems | ForEach-Object { Join-Path $PSScriptRoot $_ } |
+        Get-ChildItem -Recurse -Include '*.ps1', '*.psm1', '*.psd1' -File
+    $issues = $sources | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Settings $settings }
     if ($issues) {
-        $issues | Format-Table -AutoSize
-        throw "PSScriptAnalyzer found $($issues.Count) error(s)."
+        $issues | Format-Table RuleName, Severity, ScriptName, Line, Message -AutoSize -Wrap | Out-Host
+        throw "PSScriptAnalyzer found $(@($issues).Count) issue(s)."
     }
 }
 
 if (-not $SkipTests) {
     Write-Host 'Running Pester tests...' -ForegroundColor Cyan
     $config = New-PesterConfiguration
-    $config.Run.Path = Join-Path $PSScriptRoot 'tests'
-    $config.Run.ExcludePath = @(Join-Path $PSScriptRoot 'tests\Performance\*')
+    $config.Run.Path = $testsPath
     $config.Run.PassThru = $true
     $config.Output.Verbosity = 'Normal'
     $result = Invoke-Pester -Configuration $config
@@ -78,7 +88,7 @@ foreach ($item in $runtimeItems) {
 
 $manifest = Test-ModuleManifest -Path (Join-Path $outputDir "$moduleName.psd1")
 $unexpected = Get-ChildItem $outputDir -Recurse -Force |
-    Where-Object { $_.Name -in '.git', '.github', 'tests', 'docs', 'examples' }
+    Where-Object { $_.Name -in '.git', '.github', 'tests', 'docs', 'examples', 'output' -or $_.Extension -in '.log', '.nupkg' }
 if ($unexpected) {
     throw "Build output contains files that must not be published: $($unexpected.FullName -join ', ')"
 }

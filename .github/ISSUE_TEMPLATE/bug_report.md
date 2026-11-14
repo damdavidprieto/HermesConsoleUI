@@ -24,8 +24,8 @@ What actually happened.
 
 ## Environment
 - **PowerShell Version**: (Run `$PSVersionTable.PSVersion`)
-- **OS**: (e.g., Windows 11, Windows Server 2022)
-- **PSConsoleUI Version**: (e.g., 2.0.0)
+- **OS**: (e.g., Windows 11, Windows Server 2022, Ubuntu 24.04)
+- **HermesConsoleUI Version**: (Run `(Get-Module HermesConsoleUI).Version`)
 - **Installation Method**: (e.g., Import-Module, PowerShell Gallery)
 
 ## Error Messages
@@ -36,7 +36,6 @@ What actually happened.
 ## Code Sample
 ```powershell
 # Minimal code to reproduce the issue
-Import-Module PSConsoleUI
 Write-ConsoleStatus -Message "Test" -Type "Success"
 ```
 
