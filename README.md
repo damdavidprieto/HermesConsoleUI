@@ -51,14 +51,11 @@ Set-UILocale -Locale "es-ES"
 HermesConsoleUI/
 ├── HermesConsoleUI.psm1      # ⭐ Main module file
 ├── HermesConsoleUI.psd1      # Module manifest
-├── ui_components.psm1        # Consolidated components
-├── Install.ps1               # Installation script
+├── build.ps1                 # Analysis, tests and package build (output/HermesConsoleUI)
 ├── README.md                 # This file
 │
-├── src/                      # Source code
-│   └── Core/
-│       ├── Config.ps1        # Configuration management
-│       └── Localization.ps1  # i18n system
+├── src/                      # Core: constants, validators, configuration, i18n
+├── modules/                  # UI components (text, visual, interactive, layout)
 │
 ├── config/                   # Configuration
 │   ├── ui_config.json       # Themes and component defaults
@@ -113,30 +110,21 @@ the NuGet provider prompt.
 
 Package page: [HermesConsoleUI on the PowerShell Gallery](https://www.powershellgallery.com/packages/HermesConsoleUI)
 
-### Option 2: Automated Install from source
+### Option 2: From source
 ```powershell
-# Install for current user
-.\Install.ps1
+git clone https://github.com/damdavidprieto/HermesConsoleUI.git
+cd HermesConsoleUI
 
-# Install for all users (requires admin)
-.\Install.ps1 -Scope AllUsers
-```
-
-### Option 3: Manual Install
-```powershell
-# Copy to your modules directory
-$modulePath = "$HOME\Documents\WindowsPowerShell\Modules\HermesConsoleUI"
-Copy-Item -Path "." -Destination $modulePath -Recurse
-
-# Import the module
-Import-Module HermesConsoleUI
-```
-
-### Option 4: Direct Use (No Installation)
-```powershell
-# Just import the module from current directory
+# Use it without installing
 Import-Module .\HermesConsoleUI.psd1
+
+# Or build the package (only the runtime files) and import that
+.\build.ps1 -SkipAnalysis -SkipTests
+Import-Module .\output\HermesConsoleUI\HermesConsoleUI.psd1
 ```
+
+To install a build from source, copy `output\HermesConsoleUI` into a folder listed in
+`$env:PSModulePath`. Do not copy the repository root: it contains `.git`, tests and docs.
 
 ---
 

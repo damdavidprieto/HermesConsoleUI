@@ -1,24 +1,20 @@
-# PSConsoleUI - Quick Start Guide
+# HermesConsoleUI - Quick Start Guide
 
-Get up and running with PSConsoleUI in 5 minutes!
+Get up and running with HermesConsoleUI in 5 minutes!
 
 ---
 
 ## 📦 Installation
 
-### Option 1: Direct Import (Recommended)
+### Option 1: PowerShell Gallery (Recommended)
 ```powershell
-# Clone or download the repository
-git clone https://github.com/yourusername/PSConsoleUI.git
-
-# Import the module
-Import-Module .\PSConsoleUI\PSConsoleUI.psd1
+Install-Module -Name HermesConsoleUI -Scope CurrentUser
 ```
 
-### Option 2: Install Script
+### Option 2: From source
 ```powershell
-# Run the installation script
-.\PSConsoleUI\Install.ps1
+git clone https://github.com/damdavidprieto/HermesConsoleUI.git
+Import-Module .\HermesConsoleUI\HermesConsoleUI.psd1
 ```
 
 ---
@@ -29,7 +25,7 @@ Create a file called `my-first-ui.ps1`:
 
 ```powershell
 # Import the module
-Import-Module PSConsoleUI
+Import-Module HermesConsoleUI
 
 # Display a title
 Write-ConsoleTitle -Title "MY FIRST APP"
@@ -44,7 +40,7 @@ Write-ConsoleChart -Label "CPU Usage" -Value 45 -Max 100 -Color "Green"
 Write-ConsoleChart -Label "Memory" -Value 6144 -Max 8192 -Color "Yellow"
 
 # Show a box with a message
-Write-ConsoleBox -Message "Welcome to PSConsoleUI!" -Color "Cyan"
+Write-ConsoleBox -Message "Welcome to HermesConsoleUI!" -Color "Cyan"
 
 # Display metadata
 $info = @{
@@ -64,7 +60,7 @@ Run it:
 
 ## 🎨 Using Themes
 
-PSConsoleUI comes with 4 built-in themes:
+HermesConsoleUI comes with 4 built-in themes:
 
 ```powershell
 # Change theme
@@ -84,7 +80,7 @@ Get-AvailableThemes
 
 ## 🌍 Using Localization
 
-PSConsoleUI supports 3 languages out of the box:
+HermesConsoleUI supports 3 languages out of the box:
 
 ```powershell
 # Change language
