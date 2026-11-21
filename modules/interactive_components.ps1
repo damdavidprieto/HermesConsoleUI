@@ -140,7 +140,8 @@ function Read-ConsoleChoice {
         Prompts until the user types a whole number from 1 to -MaxChoice, or 0 when
         -AllowZero is true (the default), and returns it. Anything else, including numbers
         too large to read, shows a message and asks again. The default prompt and messages
-        follow the active locale.
+        follow the active locale. With -MaxChoice 0 and -AllowZero $false there is nothing the
+        user could type, so it throws instead of asking forever.
 
     .PARAMETER MaxChoice
         Highest valid choice, usually the value returned by Show-ConsoleMenu.
@@ -173,6 +174,9 @@ function Read-ConsoleChoice {
         [bool]$AllowZero = $true
     )
 
+    if ($MaxChoice -lt 1 -and -not $AllowZero) {
+        throw [System.ArgumentException]::new('There is no valid choice: -MaxChoice is 0 and -AllowZero is $false.', 'MaxChoice')
+    }
     if (-not $Prompt) { $Prompt = Get-UIText -Key 'Menu.SelectPrompt' -Default 'Select an option' }
     $invalid = Get-UIText -Key 'Menu.InvalidOption' -Default 'Invalid option. Try again.'
 
@@ -319,7 +323,9 @@ function Invoke-ConsoleSpinner {
     .DESCRIPTION
         Writes the message, runs -Action with Start-Job and animates a spinner until the job
         ends, then writes "Done" and returns the job's output. The job is removed afterwards,
-        also when the user presses Ctrl+C.
+        also when the user presses Ctrl+C. When the output is redirected to a file or a pipe,
+        the spinner is not drawn (it would leave backspace characters in the output); the
+        message and "Done" are still written.
         The action runs in a separate process: it cannot see your variables (use $using:)
         or functions. It runs with your permissions; do not build it from untrusted input.
 
@@ -346,18 +352,24 @@ function Invoke-ConsoleSpinner {
         [scriptblock]$Action
     )
 
-    Write-HermesHost $Message -NoNewline
+    Write-HermesHost "$Message " -NoNewline
     $spinner = '|', '/', '-', '\'
+    $animate = -not [Console]::IsOutputRedirected
+    $drawn = $false
     $job = Start-Job -ScriptBlock $Action
     try {
         while ($job.State -in 'NotStarted', 'Running') {
+            if (-not $animate) { $null = Wait-Job $job; break }
             foreach ($s in $spinner) {
-                Write-Host "`b$s" -NoNewline
+                # A backspace only once a spinner character is on screen: the first one would
+                # erase the last character of the message.
+                Write-Host "$(if ($drawn) { "`b" })$s" -NoNewline
+                $drawn = $true
                 Start-Sleep -Milliseconds 100
             }
         }
         Receive-Job $job
-        Write-Host "`bDone" -ForegroundColor (Resolve-UIColor -Role Success)
+        Write-Host "$(if ($drawn) { "`b" })Done" -ForegroundColor (Resolve-UIColor -Role Success)
     }
     finally {
         Remove-Job $job -Force -ErrorAction SilentlyContinue

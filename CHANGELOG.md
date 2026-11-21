@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`Invoke-ConsoleSpinner` erased the last character of the message.** The first spinner frame started
+  with a backspace, so "Working" became "Workin|". The message is now followed by a space and the first
+  frame has no backspace. When the output is redirected to a file or a pipe the spinner is not drawn,
+  so no backspace characters end up in the output.
+- **`Read-ConsoleChoice -MaxChoice 0 -AllowZero $false` asked forever**, since no answer could be valid.
+  It now throws an `ArgumentException` (for example, a menu whose options are all separators).
+
 ## [2.2.0] - 2026-11-14
 
 This release makes HermesConsoleUI a standard Windows PowerShell 5.1 / PowerShell 7 module that
