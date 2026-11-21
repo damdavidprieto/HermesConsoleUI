@@ -7,15 +7,18 @@ Invoke-ConsoleMenu -Title 'Maintenance' -Footer 'Example menu: nothing is change
     @{ Label = '[Information]' }
     @{ Label = 'Show the five busiest processes'; Action = {
             Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 |
-                Write-ConsoleTable -Columns @(
-                    @{ Header = 'Name'; Property = 'ProcessName'; Width = 25 }
-                    @{ Header = 'Id'; Property = 'Id'; Width = 8 }
-                )
+                Select-Object ProcessName, Id, CPU | Write-ConsoleTable
         }
     }
     @{ Label = 'Pick components to check'; Action = {
-            $picked = Read-ConsoleMultiChoice -Options 'Disk', 'Network', 'Services'
+            # Arrow keys, Space to mark, Enter to accept (numbered prompts without a console).
+            $picked = Read-ConsoleSelection -Title 'Components' -Options 'Disk', 'Network', 'Services' -Multiple
             if ($picked) { Show-ConsoleList -Items $picked } else { Write-ConsoleInfo -Message 'Nothing selected' }
+        }
+    }
+    @{ Label = 'Choose an environment'; Action = {
+            $target = Read-ConsoleSelection -Title 'Deploy to' -Options 'Development', 'Staging', 'Production'
+            if ($target) { Write-ConsoleText "Deploying to {Success}$target{/} (simulated)" } else { Write-ConsoleInfo -Message 'Cancelled' }
         }
     }
     @{ Label = '---' }

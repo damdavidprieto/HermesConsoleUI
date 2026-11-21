@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Compared with other console UI modules in the PowerShell Gallery (PwshSpectreConsole, PSMenu,
+ps-menu, PSWriteColor, TableUI), HermesConsoleUI lacked arrow-key menus, tables sized to their
+content and validated input. This release adds them without dependencies, on Windows PowerShell
+5.1 and PowerShell 7.
+
+### Added
+- **`Read-ConsoleSelection`**: choose one option with the arrow keys and Enter, or several with
+  `-Multiple` (Space marks, A marks all), with paging for long lists (`-PageSize`), objects shown
+  through `-DisplayProperty`, and `-ReturnIndex`. Escape cancels. Without an interactive console
+  (CI, pipes, the ISE, remote sessions) it falls back to numbered prompts.
+- **`Write-ConsoleText`**: several colors in one line with `{Color}text{/}` marks, using console
+  color names or theme roles such as `{Success}`.
+- **`Read-ConsoleInput -Required`, `-Pattern`, `-Validate` and `-ErrorMessage`**: the question is
+  asked again until the answer is valid.
+- **`NO_COLOR`** (https://no-color.org): when set, no component writes colors.
+- Locale strings for the selection hints and the input error message in English, Spanish and French.
+
+### Changed
+- **`Write-ConsoleTable` sizes columns automatically.** Columns without `Width` are as wide as their
+  longest value or header (they were always 20 characters), the widest ones are narrowed to fit the
+  console window, numeric columns are aligned to the right (`Align` chooses), and a line separates
+  the header from the rows. Columns with `Width` keep it.
+
 ### Fixed
 - **`Invoke-ConsoleSpinner` erased the last character of the message.** The first spinner frame started
   with a backspace, so "Working" became "Workin|". The message is now followed by a space and the first

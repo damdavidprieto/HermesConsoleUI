@@ -15,6 +15,11 @@
         "Prompt": "Seleccione opciones (separadas por coma)"
     },
     "Input": {
-        "Prompt": "[?]"
+        "Prompt": "[?]",
+        "Invalid": "Valor no válido. Inténtalo de nuevo."
+    },
+    "Selection": {
+        "Hint": "Flechas para moverte, Enter para elegir, Esc para cancelar",
+        "MultiHint": "Flechas para moverte, Espacio marca, A marca todo, Enter acepta, Esc cancela"
     }
 }

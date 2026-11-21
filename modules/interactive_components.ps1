@@ -369,7 +369,9 @@ function Invoke-ConsoleSpinner {
             }
         }
         Receive-Job $job
-        Write-Host "$(if ($drawn) { "`b" })Done" -ForegroundColor (Resolve-UIColor -Role Success)
+        $doneColor = @{}
+        if (-not (Test-NoColor)) { $doneColor.ForegroundColor = Resolve-UIColor -Role Success }
+        Write-Host "$(if ($drawn) { "`b" })Done" @doneColor
     }
     finally {
         Remove-Job $job -Force -ErrorAction SilentlyContinue
@@ -477,12 +479,28 @@ function Read-ConsoleInput {
         Shows the prompt and returns what the user types, as a string. With -DefaultValue the
         default is shown in brackets and returned when the user just presses Enter. For
         passwords use Read-ConsolePassword, which does not echo the input.
+        -Required, -Pattern and -Validate check the answer: until it is valid, the error message
+        is shown and the question is asked again. The default value is checked too.
 
     .PARAMETER Prompt
         Prompt text. Defaults to the locale's input prompt, "[?]".
 
     .PARAMETER DefaultValue
         Value returned when the user enters nothing.
+
+    .PARAMETER Required
+        Do not accept an empty answer (when there is no -DefaultValue).
+
+    .PARAMETER Pattern
+        Regular expression the whole answer must match, for example '\d{1,5}'. An empty
+        answer is accepted unless -Required is set.
+
+    .PARAMETER Validate
+        Script block that receives the answer as $_ and returns $true when it is valid. An empty
+        answer is accepted unless -Required is set.
+
+    .PARAMETER ErrorMessage
+        Message shown when the answer is not valid. Defaults to the locale's "Invalid value. Try again."
 
     .EXAMPLE
         $port = Read-ConsoleInput -Prompt "Port" -DefaultValue "8080"
@@ -493,6 +511,11 @@ function Read-ConsoleInput {
         $name = Read-ConsoleInput -Prompt "Server name"
 
         Returns the server name the user types.
+
+    .EXAMPLE
+        $port = Read-ConsoleInput -Prompt "Port" -Required -Validate { [int]::TryParse($_, [ref]$null) -and [int]$_ -in 1..65535 } -ErrorMessage "Type a port from 1 to 65535."
+
+        Asks again until the user types a valid port number.
     #>
     [CmdletBinding()]
     [OutputType([string])]
@@ -500,16 +523,38 @@ function Read-ConsoleInput {
         [string]$Prompt,
 
         [AllowEmptyString()]
-        [string]$DefaultValue
+        [string]$DefaultValue,
+
+        [switch]$Required,
+
+        [string]$Pattern,
+
+        [scriptblock]$Validate,
+
+        [string]$ErrorMessage
     )
 
     if (-not $Prompt) { $Prompt = Get-UIText -Key 'Input.Prompt' -Default '[?]' }
+    if (-not $ErrorMessage) { $ErrorMessage = Get-UIText -Key 'Input.Invalid' -Default 'Invalid value. Try again.' }
     $hasDefault = $PSBoundParameters.ContainsKey('DefaultValue')
     if ($hasDefault -and $DefaultValue) { $Prompt = "$Prompt [$DefaultValue]" }
 
-    $answer = Read-Host -Prompt $Prompt
-    if ($hasDefault -and [string]::IsNullOrEmpty($answer)) { return $DefaultValue }
-    return $answer
+    while ($true) {
+        $answer = Read-Host -Prompt $Prompt
+        if ($hasDefault -and [string]::IsNullOrEmpty($answer)) { $answer = $DefaultValue }
+
+        $valid = $true
+        if ([string]::IsNullOrEmpty($answer)) { $valid = -not $Required }
+        else {
+            if ($Pattern -and $answer -notmatch "^(?:$Pattern)$") { $valid = $false }
+            if ($valid -and $Validate) {
+                try { $valid = [bool](@($answer | ForEach-Object -Process $Validate) | Select-Object -Last 1) }
+                catch { $valid = $false }
+            }
+        }
+        if ($valid) { return $answer }
+        Write-HermesHost ('  ' + $ErrorMessage) -ForegroundColor (Resolve-UIColor -Role Error)
+    }
 }
 
 function Read-ConsoleConfirmation {
@@ -602,4 +647,208 @@ function Show-ConsoleNotification {
     )
 
     Write-HermesHost "[$Type] $Message" -ForegroundColor (Resolve-UIColor -Role $Type)
+}
+
+function Read-ConsoleSelection {
+    <#
+    .SYNOPSIS
+        Lets the user pick one option, or several with -Multiple, with the arrow keys.
+
+    .DESCRIPTION
+        Shows the options as a list and moves the highlight with the Up and Down arrows (Page Up,
+        Page Down, Home and End jump further). Enter chooses the highlighted option and Escape
+        cancels. With -Multiple, Space marks or unmarks the highlighted option, A marks or unmarks
+        all of them, and Enter returns the marked ones (or the highlighted one if none is marked).
+        Long lists scroll in pages of -PageSize lines, with a counter of the position.
+        Returns the chosen option, or with -ReturnIndex its index (from 0). Cancelling returns
+        $null, or an empty array with -Multiple.
+        Without an interactive console (output or input redirected, the ISE, a remote session or a
+        CI log) the options are listed with numbers and read with Read-ConsoleChoice or
+        Read-ConsoleMultiChoice instead, so scripts keep working there.
+
+    .PARAMETER Options
+        The options. Objects are shown with -DisplayProperty, or as text.
+
+    .PARAMETER Title
+        Text shown above the list.
+
+    .PARAMETER Multiple
+        Allow marking several options with Space.
+
+    .PARAMETER Default
+        Index (from 0) of the option highlighted at the start. Defaults to the first one.
+
+    .PARAMETER PageSize
+        Options shown at a time; longer lists scroll. Defaults to 10.
+
+    .PARAMETER DisplayProperty
+        Property of each option to show, for objects such as services or files.
+
+    .PARAMETER ReturnIndex
+        Return the index of the chosen option (or options) instead of the option itself.
+
+    .EXAMPLE
+        $target = Read-ConsoleSelection -Title 'Deploy to' -Options 'Development', 'Staging', 'Production'
+
+        Returns the environment chosen with the arrow keys and Enter, or $null on Escape.
+
+    .EXAMPLE
+        $services = Read-ConsoleSelection -Options (Get-Service | Select-Object -First 30) -DisplayProperty DisplayName -Multiple
+
+        Returns the service objects marked with Space.
+    #>
+    [CmdletBinding()]
+    [OutputType([object], [object[]])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [object[]]$Options,
+
+        [string]$Title,
+
+        [switch]$Multiple,
+
+        [ValidateRange(0, [int]::MaxValue)]
+        [int]$Default = 0,
+
+        [ValidateRange(3, 100)]
+        [int]$PageSize = 10,
+
+        [string]$DisplayProperty,
+
+        [switch]$ReturnIndex
+    )
+
+    $labels = @(foreach ($option in $Options) {
+            $text = if ($DisplayProperty -and $null -ne $option) { [string]$option.$DisplayProperty } else { [string]$option }
+            (ConvertTo-ConsoleSafeText -Text $text) -replace '[\r\n\t]', ' '
+        })
+    $count = $labels.Count
+    # Indexes of the chosen options; $null means cancelled. Every path ends at the single return below.
+    $final = $null
+
+    if ($Title) { Write-HermesHost ('  ' + $Title) -ForegroundColor (Resolve-UIColor -Role Primary) }
+
+    $interactive = Test-InteractiveConsole
+    if (-not $interactive -and $Multiple) {
+        $picked = @(Read-ConsoleMultiChoice -Options $labels)
+        $final = @(foreach ($label in $picked) { [array]::IndexOf($labels, $label) })
+    }
+    elseif (-not $interactive) {
+        for ($i = 0; $i -lt $count; $i++) {
+            Write-HermesHost ('  [{0}] {1}' -f ($i + 1), $labels[$i]) -ForegroundColor (Resolve-UIColor -Role Muted)
+        }
+        $choice = Read-ConsoleChoice -MaxChoice $count -AllowZero $true
+        if ($choice -gt 0) { $final = @($choice - 1) }
+    }
+    else {
+        $final = Read-ConsoleSelectionKey -Labels $labels -Multiple:$Multiple -Default $Default -PageSize $PageSize
+    }
+
+    $chosen = @(foreach ($i in @($final)) { if ($null -ne $i) { if ($ReturnIndex) { $i } else { $Options[$i] } } })
+    if ($Multiple) { return , $chosen }
+    if ($chosen.Count) { return $chosen[0] }
+    return $null
+}
+
+function Read-ConsoleSelectionKey {
+    <#
+    .SYNOPSIS
+        The interactive part of Read-ConsoleSelection: draws the list, reads keys and returns the
+        chosen indexes, or $null when the user cancels.
+    #>
+    [CmdletBinding()]
+    [OutputType([int[]], [object[]])]
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Labels,
+        [switch]$Multiple,
+        [int]$Default = 0,
+        [int]$PageSize = 10
+    )
+
+    $count = $Labels.Count
+
+    $state = @{
+        Index  = [Math]::Min($Default, $count - 1)
+        Top    = 0
+        Marked = [System.Collections.Generic.SortedSet[int]]::new()
+    }
+    $pageSize = [Math]::Min($PageSize, $count)
+    $state.Index = [Math]::Max(0, $state.Index)
+    if ($Multiple) {
+        $hint = Get-UIText -Key 'Selection.MultiHint' -Default 'Up/Down move, Space mark, A all, Enter accept, Esc cancel'
+    }
+    else {
+        $hint = Get-UIText -Key 'Selection.Hint' -Default 'Up/Down move, Enter select, Esc cancel'
+    }
+    $width = Get-ConsoleWidth
+    $colors = @{
+        Current = Resolve-UIColor -Role Primary
+        Marked  = Resolve-UIColor -Role Success
+        Other   = Resolve-UIColor -Role Highlight
+        Muted   = Resolve-UIColor -Role Muted
+    }
+    $fit = {
+        param([string]$Line)
+        if ($width -le 1) { return $Line }
+        if ($Line.Length -ge $width) { return $Line.Substring(0, $width - 1) }
+        return $Line.PadRight($width - 1)
+    }
+
+    $render = {
+        if ($state.Index -lt $state.Top) { $state.Top = $state.Index }
+        if ($state.Index -ge $state.Top + $pageSize) { $state.Top = $state.Index - $pageSize + 1 }
+        for ($row = 0; $row -lt $pageSize; $row++) {
+            $i = $state.Top + $row
+            $pointer = if ($i -eq $state.Index) { '> ' } else { '  ' }
+            $box = ''
+            if ($Multiple) { $box = if ($state.Marked.Contains($i)) { '[x] ' } else { '[ ] ' } }
+            $color = if ($i -eq $state.Index) { $colors.Current } elseif ($state.Marked.Contains($i)) { $colors.Marked } else { $colors.Other }
+            Write-HermesHost (& $fit "  $pointer$box$($Labels[$i])") -ForegroundColor $color
+        }
+        $footer = "  $hint"
+        if ($count -gt $pageSize) { $footer += "  ($($state.Index + 1)/$count)" }
+        Write-HermesHost (& $fit $footer) -ForegroundColor $colors.Muted
+    }
+
+    $cursorWasVisible = Set-ConsoleCursorVisible -Visible $false
+    try {
+        & $render
+        while ($true) {
+            $key = & $script:HermesReadKey
+            $redraw = $true
+            switch ([string]$key.Key) {
+                'UpArrow' { $state.Index = ($state.Index - 1 + $count) % $count }
+                'DownArrow' { $state.Index = ($state.Index + 1) % $count }
+                'PageUp' { $state.Index = [Math]::Max(0, $state.Index - $pageSize) }
+                'PageDown' { $state.Index = [Math]::Min($count - 1, $state.Index + $pageSize) }
+                'Home' { $state.Index = 0 }
+                'End' { $state.Index = $count - 1 }
+                'Spacebar' {
+                    if ($Multiple) { if (-not $state.Marked.Remove($state.Index)) { $null = $state.Marked.Add($state.Index) } }
+                }
+                'A' {
+                    if ($Multiple) {
+                        if ($state.Marked.Count -eq $count) { $state.Marked.Clear() }
+                        else { for ($i = 0; $i -lt $count; $i++) { $null = $state.Marked.Add($i) } }
+                    }
+                }
+                'Enter' {
+                    if ($Multiple -and $state.Marked.Count) { return , ([int[]]@($state.Marked)) }
+                    return , ([int[]]@($state.Index))
+                }
+                'Escape' { return $null }
+                default { $redraw = $false }
+            }
+            if ($redraw) {
+                # Redraw over the previous list: it always has the same number of lines.
+                $row = Get-ConsoleCursorRow
+                if ($row -ge 0) { Set-ConsoleCursorRow -Row ($row - $pageSize - 1) }
+                & $render
+            }
+        }
+    }
+    finally {
+        $null = Set-ConsoleCursorVisible -Visible $cursorWasVisible
+    }
 }

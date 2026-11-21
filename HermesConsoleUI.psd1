@@ -37,6 +37,7 @@
         'Write-ConsoleDiff'
         'Write-ConsoleSeparator'
         'Write-ConsoleBreadcrumb'
+        'Write-ConsoleText'
 
         # Visual components
         'Write-ConsoleBox'
@@ -51,6 +52,7 @@
         'Show-ConsoleMenu'
         'Read-ConsoleChoice'
         'Read-ConsoleMultiChoice'
+        'Read-ConsoleSelection'
         'Invoke-ConsoleMenu'
         'Invoke-ConsoleSpinner'
         'Write-ConsoleProgress'

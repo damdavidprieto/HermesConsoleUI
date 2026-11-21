@@ -36,14 +36,14 @@ Export-ModuleMember -Alias 'Get-AvailableThemes', 'Get-AvailableLocales' -Functi
     # Text components
     'Write-ConsoleTitle', 'Write-ConsoleHeader', 'Write-ConsoleSubtitle', 'Write-ConsoleError',
     'Write-ConsoleInfo', 'Write-ConsoleStatus', 'Write-ConsoleMetadata', 'Write-ConsoleSummary',
-    'Write-ConsoleDiff', 'Write-ConsoleSeparator', 'Write-ConsoleBreadcrumb',
+    'Write-ConsoleDiff', 'Write-ConsoleSeparator', 'Write-ConsoleBreadcrumb', 'Write-ConsoleText',
 
     # Visual components
     'Write-ConsoleBox', 'Write-ConsoleChart', 'Write-ConsoleTree', 'Write-ConsoleTable',
     'Show-ConsoleList', 'Write-ConsoleSparkline', 'Write-ConsolePanel',
 
     # Interactive components
-    'Show-ConsoleMenu', 'Read-ConsoleChoice', 'Read-ConsoleMultiChoice', 'Invoke-ConsoleMenu',
+    'Show-ConsoleMenu', 'Read-ConsoleChoice', 'Read-ConsoleMultiChoice', 'Read-ConsoleSelection', 'Invoke-ConsoleMenu',
     'Invoke-ConsoleSpinner', 'Write-ConsoleProgress', 'Show-ConsoleProgress', 'Read-ConsoleInput',
     'Read-ConsoleConfirmation', 'Read-ConsolePassword', 'Show-ConsoleNotification',
 
