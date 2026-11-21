@@ -310,6 +310,27 @@ Describe 'Progress and prompts' {
         Invoke-ConsoleSpinner -Message 'Working' -Action { 21 * 2 } | Should -Be 42
         @(Get-Job).Count | Should -Be $before
     }
+
+    It 'Invoke-ConsoleSpinner keeps the whole message on screen' {
+        Mock -ModuleName HermesConsoleUI Start-Sleep { }
+        Start-HostCapture
+        $null = Invoke-ConsoleSpinner -Message 'Working' -Action { Start-Sleep -Milliseconds 300; 1 }
+        # Replay the writes as a terminal would: a backspace erases the previous character.
+        $screen = [System.Text.StringBuilder]::new()
+        foreach ($text in $script:hostOutput.Text) {
+            foreach ($ch in $text.ToCharArray()) {
+                if ($ch -eq [char]8) { if ($screen.Length) { $null = $screen.Remove($screen.Length - 1, 1) } }
+                else { $null = $screen.Append($ch) }
+            }
+        }
+        $screen.ToString() | Should -BeExactly 'Working Done'
+    }
+
+    It 'Read-ConsoleChoice refuses a menu with no valid choice instead of asking forever' {
+        Mock -ModuleName HermesConsoleUI Read-Host { 'x' }
+        { Read-ConsoleChoice -MaxChoice 0 -AllowZero $false } | Should -Throw '*no valid choice*'
+        Should -Invoke -ModuleName HermesConsoleUI Read-Host -Times 0 -Exactly
+    }
 }
 
 Describe 'Parameters used by existing scripts' {
