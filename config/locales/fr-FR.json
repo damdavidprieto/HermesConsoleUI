@@ -15,6 +15,11 @@
         "Prompt": "Sélectionnez les options (séparées par une virgule)"
     },
     "Input": {
-        "Prompt": "[?]"
+        "Prompt": "[?]",
+        "Invalid": "Valeur non valide. Réessayez."
+    },
+    "Selection": {
+        "Hint": "Flèches pour se déplacer, Entrée pour choisir, Échap pour annuler",
+        "MultiHint": "Flèches pour se déplacer, Espace coche, A coche tout, Entrée valide, Échap annule"
     }
 }

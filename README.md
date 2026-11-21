@@ -11,6 +11,9 @@ charts, panels, menus, prompts and side-by-side layouts, with color themes and l
 - Every component follows the active color theme; an explicit `-Color` always wins.
 - Prompts in English, Spanish and French (`Set-UILocale`).
 - Text from your data is written safely: terminal escape sequences are removed before display.
+- Menus driven by the arrow keys, which fall back to numbered prompts where there is no interactive
+  console (CI logs, pipes, remote sessions), so the same script runs everywhere.
+- Honors [`NO_COLOR`](https://no-color.org).
 - Every command has full help: `Get-Help Write-ConsoleTable -Full`.
 
 ## Installation
@@ -36,6 +39,15 @@ Get-Service | Select-Object -First 5 | Write-ConsoleTable -Columns @(
 ) -ColorMapProperty Status -ColorMap @{ Running = 'Green'; Stopped = 'Red' }
 
 $choice = Show-ConsoleMenu -Title 'Main menu' -Options 'Audit', 'Repair' -ReturnIndex
+
+# Arrow keys and Enter; -Multiple marks several with Space
+$target = Read-ConsoleSelection -Title 'Deploy to' -Options 'Development', 'Staging', 'Production'
+
+# Several colors in one line
+Write-ConsoleText 'Deploy {Success}finished{/} in {Cyan}42 s{/}, {Warning}2 warnings{/}'
+
+# Asks again until the answer is valid
+$port = Read-ConsoleInput -Prompt 'Port' -DefaultValue '8080' -Pattern '\d{1,5}'
 ```
 
 More in [`examples/`](examples/): text, data display, layouts, themes and locales, and an
@@ -45,9 +57,9 @@ interactive menu. Each example runs as part of the tests.
 
 | Area | Commands |
 |---|---|
-| Text | `Write-ConsoleTitle`, `Write-ConsoleHeader`, `Write-ConsoleSubtitle`, `Write-ConsoleStatus`, `Write-ConsoleInfo`, `Write-ConsoleError`, `Write-ConsoleMetadata`, `Write-ConsoleSummary`, `Write-ConsoleDiff`, `Write-ConsoleSeparator`, `Write-ConsoleBreadcrumb` |
+| Text | `Write-ConsoleText`, `Write-ConsoleTitle`, `Write-ConsoleHeader`, `Write-ConsoleSubtitle`, `Write-ConsoleStatus`, `Write-ConsoleInfo`, `Write-ConsoleError`, `Write-ConsoleMetadata`, `Write-ConsoleSummary`, `Write-ConsoleDiff`, `Write-ConsoleSeparator`, `Write-ConsoleBreadcrumb` |
 | Data | `Write-ConsoleTable`, `Show-ConsoleList`, `Write-ConsoleTree`, `Write-ConsoleChart`, `Write-ConsoleSparkline`, `Write-ConsoleBox`, `Write-ConsolePanel` |
-| Interaction | `Show-ConsoleMenu`, `Read-ConsoleChoice`, `Invoke-ConsoleMenu`, `Read-ConsoleMultiChoice`, `Read-ConsoleInput`, `Read-ConsoleConfirmation`, `Read-ConsolePassword`, `Invoke-ConsoleSpinner`, `Show-ConsoleProgress`, `Write-ConsoleProgress`, `Show-ConsoleNotification` |
+| Interaction | `Read-ConsoleSelection`, `Show-ConsoleMenu`, `Read-ConsoleChoice`, `Invoke-ConsoleMenu`, `Read-ConsoleMultiChoice`, `Read-ConsoleInput`, `Read-ConsoleConfirmation`, `Read-ConsolePassword`, `Invoke-ConsoleSpinner`, `Show-ConsoleProgress`, `Write-ConsoleProgress`, `Show-ConsoleNotification` |
 | Layout | `New-ConsoleLayout`, `New-ConsoleRow`, `New-ConsoleColumn`, `Write-ConsoleLayout` |
 | Themes | `Set-ConsoleTheme`, `Get-ConsoleTheme`, `Get-AvailableTheme`, `Get-UIColor`, `Get-UIIcon`, `Get-UIConfig`, `Initialize-UIConfig` |
 | Localization | `Set-UILocale`, `Get-UILocale`, `Get-AvailableLocale`, `Get-LocalizedString`, `Initialize-Localization` |
@@ -79,9 +91,25 @@ culture when a file exists for it, and English otherwise.
 
 ## Menus and the screen
 
+`Read-ConsoleSelection` draws the list in place and redraws it as you move, with Page Up, Page Down,
+Home and End for long lists (`-PageSize`). Without an interactive console it lists the options
+with numbers and reads the answer with `Read-ConsoleChoice` or `Read-ConsoleMultiChoice`.
+
 `Show-ConsoleMenu` clears the screen before drawing. Use `-NoClear` for one menu, or set
 `$env:HERMESCONSOLEUI_NOCLEAR = 1` to keep earlier output on screen in every menu, for example
 while debugging.
+
+## Tables
+
+`Write-ConsoleTable` sizes each column to its longest value (up to `MaxColumnWidth` in the theme
+configuration), narrows the widest ones when the table does not fit in the window, aligns numbers
+to the right and underlines the header. Give a column a `Width` or an `Align` to fix them.
+
+## Colors
+
+`NO_COLOR` set to any value turns colors off in every component. `Write-ConsoleText` takes
+`{Color}` marks with any console color or theme role; `{/}` goes back to the default color and
+`{{` writes a literal brace.
 
 ## Security
 

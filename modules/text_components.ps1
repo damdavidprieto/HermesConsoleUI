@@ -514,3 +514,93 @@ function Write-ConsoleBreadcrumb {
     $Color = Resolve-UIColor -Color $Color -Role Muted
     Write-HermesHost ('  ' + ($Path -join $Separator)) -ForegroundColor $Color
 }
+
+function Write-ConsoleText {
+    <#
+    .SYNOPSIS
+        Writes a line with several colors, marked inline as {Color}text{/}.
+
+    .DESCRIPTION
+        The text is written as it is, except for color marks: {Red} (any console color name, such
+        as Green, DarkCyan or Yellow) or {Success} (a theme role: Primary, Secondary, Success,
+        Warning, Error, Info, Muted or Highlight) switches the color, and {/} goes back to the
+        default color. Write {{ for a literal "{". A mark that is not a color is written as text.
+        Text from your data is written safely, like everywhere in the module: control
+        characters and terminal escape sequences are removed.
+
+    .PARAMETER Text
+        The text with color marks. Accepts pipeline input, one line per item.
+
+    .PARAMETER Color
+        Default color, used outside marks. Defaults to the terminal's own color.
+
+    .PARAMETER NoNewline
+        Do not end the line.
+
+    .EXAMPLE
+        Write-ConsoleText 'Backup {Success}completed{/} in {Cyan}42 s{/}, {Warning}2 files skipped{/}'
+
+        Writes one line with "completed" in the theme's success color, "42 s" in cyan and the
+        warning in the theme's warning color.
+
+    .EXAMPLE
+        Get-Service | Select-Object -First 3 | ForEach-Object { "{Highlight}$($_.Name){/} is {Muted}$($_.Status){/}" } | Write-ConsoleText
+
+        Writes one colored line per service.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true)]
+        [AllowEmptyString()]
+        [string]$Text,
+
+        [string]$Color,
+
+        [switch]$NoNewline
+    )
+
+    process {
+        $roles = 'Primary', 'Secondary', 'Success', 'Warning', 'Error', 'Info', 'Muted', 'Highlight'
+        $current = $Color
+        $segments = [System.Collections.Generic.List[object]]::new()
+        $buffer = [System.Text.StringBuilder]::new()
+        $flush = {
+            if ($buffer.Length) { $segments.Add(@($buffer.ToString(), $current)); $null = $buffer.Clear() }
+        }
+
+        $i = 0
+        while ($i -lt $Text.Length) {
+            $ch = $Text[$i]
+            if ($ch -eq '{' -and $i + 1 -lt $Text.Length -and $Text[$i + 1] -eq '{') {
+                $null = $buffer.Append('{'); $i += 2; continue
+            }
+            if ($ch -eq '{') {
+                $end = $Text.IndexOf('}', $i + 1)
+                if ($end -gt $i) {
+                    $name = $Text.Substring($i + 1, $end - $i - 1)
+                    $parsed = [ConsoleColor]::White
+                    $next = $null
+                    if ($name -eq '/') { $next = $Color }
+                    elseif ($roles -contains $name) { $next = Resolve-UIColor -Role $name }
+                    elseif ($name -match '^[A-Za-z]+$' -and [Enum]::TryParse($name, $true, [ref]$parsed)) { $next = [string]$parsed }
+                    if ($name -eq '/' -or $null -ne $next) {
+                        & $flush
+                        $current = $next
+                        $i = $end + 1
+                        continue
+                    }
+                }
+            }
+            $null = $buffer.Append($ch)
+            $i++
+        }
+        & $flush
+
+        foreach ($segment in $segments) {
+            $parameters = @{ Object = $segment[0]; NoNewline = $true }
+            if ($segment[1]) { $parameters.ForegroundColor = $segment[1] }
+            Write-HermesHost @parameters
+        }
+        if (-not $NoNewline) { Write-HermesHost '' }
+    }
+}

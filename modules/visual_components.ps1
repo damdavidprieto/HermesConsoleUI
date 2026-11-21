@@ -438,12 +438,17 @@ function Write-ConsoleBox {
 function Write-ConsoleTable {
     <#
     .SYNOPSIS
-        Displays objects as a table with fixed-width columns.
+        Displays objects as a table with aligned columns.
 
     .DESCRIPTION
-        Writes a header row and one row per object. Each column reads one property and has
-        a fixed width; longer values are cut so the columns stay aligned. Without -Columns,
-        one 20-character column is created for each property of the first object.
+        Writes a header row, a line under it and one row per object. Each column reads one
+        property. A column with Width keeps that width; one without it is as wide as its longest
+        value or header (up to the MaxColumnWidth of the theme configuration, 80 by default), and
+        when the table does not fit in the console window the widest automatic columns are
+        narrowed. Longer values are cut so the columns stay aligned. Without -Columns, one column
+        is created for each property of the first object.
+        Columns whose values are all numbers are aligned to the right; set Align to Left or Right
+        in a column definition to choose.
         With -ColorMapProperty and -ColorMap, each row is colored according to the value of
         that property, for example green for "Running" and red for "Stopped".
 
@@ -451,7 +456,8 @@ function Write-ConsoleTable {
         The objects to display. Accepts pipeline input.
 
     .PARAMETER Columns
-        Column definitions: hashtables (or objects) with Header, Property and Width.
+        Column definitions: hashtables (or objects) with Header and Property, and optionally
+        Width (characters, including the space before the next column) and Align (Left or Right).
 
     .PARAMETER Title
         Optional title shown above the table. Alias: Header.
@@ -504,8 +510,9 @@ function Write-ConsoleTable {
         }
 
         if (-not $Columns) {
-            $Columns = @($rows[0].PSObject.Properties | ForEach-Object { @{ Header = $_.Name; Property = $_.Name; Width = 20 } })
+            $Columns = @($rows[0].PSObject.Properties | ForEach-Object { @{ Header = $_.Name; Property = $_.Name } })
         }
+        $Columns = @(Resolve-TableColumn -Columns $Columns -Rows $rows)
 
         $headerColor = Resolve-UIColor -Role Secondary
         $rowColor = Resolve-UIColor -Role Highlight
@@ -513,8 +520,10 @@ function Write-ConsoleTable {
         Write-HermesHost ''
         if ($Title) { Write-HermesHost ('  ' + $Title) -ForegroundColor (Resolve-UIColor -Role Primary) }
 
-        $header = foreach ($col in $Columns) { Format-TableCell -Value $col.Header -Width $col.Width }
+        $header = foreach ($col in $Columns) { Format-TableCell -Value $col.Header -Width $col.Width -Align $col.Align }
         Write-HermesHost ('  ' + (-join $header)) -ForegroundColor $headerColor
+        $rule = foreach ($col in $Columns) { ('-' * ($col.Width - 1)) + ' ' }
+        Write-HermesHost ('  ' + (-join $rule).TrimEnd()) -ForegroundColor (Resolve-UIColor -Role Muted)
 
         foreach ($row in $rows) {
             $color = $rowColor
@@ -522,7 +531,7 @@ function Write-ConsoleTable {
                 $key = [string]$row.$ColorMapProperty
                 if ($ColorMap.ContainsKey($key)) { $color = $ColorMap[$key] }
             }
-            $cells = foreach ($col in $Columns) { Format-TableCell -Value $row.($col.Property) -Width $col.Width }
+            $cells = foreach ($col in $Columns) { Format-TableCell -Value $row.($col.Property) -Width $col.Width -Align $col.Align }
             Write-HermesHost ('  ' + (-join $cells)) -ForegroundColor $color
         }
         Write-HermesHost ''
@@ -536,10 +545,80 @@ function Format-TableCell {
     #>
     [CmdletBinding()]
     [OutputType([string])]
-    param($Value, [int]$Width)
+    param($Value, [int]$Width, [string]$Align = 'Left')
 
     if ($Width -lt 2) { $Width = 2 }
     $text = (ConvertTo-ConsoleSafeText -Text ([string]$Value)) -replace '[\n\t]', ' '
     if ($text.Length -gt ($Width - 1)) { $text = $text.Substring(0, $Width - 1) }
+    if ($Align -eq 'Right') { return $text.PadLeft($Width - 1) + ' ' }
     return $text.PadRight($Width)
+}
+
+function Resolve-TableColumn {
+    <#
+    .SYNOPSIS
+        Completes the column definitions of Write-ConsoleTable: width and alignment.
+    .DESCRIPTION
+        Columns without Width get the length of their longest value or header plus one (at most
+        the theme's MaxColumnWidth). If the table is wider than the console window, the widest
+        automatic columns are narrowed, down to 6 characters. Columns without Align are aligned
+        right when every value is a number.
+    #>
+    [CmdletBinding()]
+    [OutputType([pscustomobject[]], [object[]])]
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Columns,
+        [Parameter(Mandatory = $true)][object[]]$Rows
+    )
+
+    $maxWidth = 80
+    $configured = Get-UIConfig -Section 'UILibrary.Components.Table.MaxColumnWidth' -WarningAction SilentlyContinue
+    if ($configured -as [int]) { $maxWidth = [int]$configured }
+    $numeric = [type[]]@([byte], [sbyte], [int16], [uint16], [int], [uint32], [long], [uint64], [single], [double], [decimal])
+
+    $resolved = foreach ($col in $Columns) {
+        $property = Get-ColumnValue $col 'Property'
+        $header = Get-ColumnValue $col 'Header'
+        if ($null -eq $header) { $header = $property }
+        $values = @($Rows | ForEach-Object { $_.$property })
+        $width = Get-ColumnValue $col 'Width'
+        $auto = -not ($width -as [int])
+        if ($auto) {
+            $longest = (@([string]$header) + @($values | ForEach-Object { (ConvertTo-ConsoleSafeText -Text ([string]$_)) -replace '[\n\t]', ' ' }) |
+                    Measure-Object -Property Length -Maximum).Maximum
+            $width = [Math]::Min([Math]::Max([int]$longest + 1, 4), $maxWidth)
+        }
+        $align = Get-ColumnValue $col 'Align'
+        if (-not $align) {
+            $present = @($values | Where-Object { $null -ne $_ })
+            $align = if ($present.Count -and -not @($present | Where-Object { $numeric -notcontains $_.GetType() }).Count) { 'Right' } else { 'Left' }
+        }
+        [pscustomobject]@{ Header = $header; Property = $property; Width = [int]$width; Align = $align; Auto = $auto }
+    }
+    $resolved = @($resolved)
+
+    # Fit the console window: two spaces of indent, and the last column needs no trailing space.
+    $available = (Get-ConsoleWidth) - 3
+    if ($available -gt 0) {
+        while ((($resolved | Measure-Object -Property Width -Sum).Sum) -gt $available) {
+            $widest = $resolved | Where-Object { $_.Auto -and $_.Width -gt 6 } | Sort-Object Width -Descending | Select-Object -First 1
+            if (-not $widest) { break }
+            $widest.Width--
+        }
+    }
+    return $resolved
+}
+
+function Get-ColumnValue {
+    <#
+    .SYNOPSIS
+        Reads a setting from a column definition given as a hashtable or as an object.
+    #>
+    [CmdletBinding()]
+    param($Column, [string]$Name)
+
+    if ($Column -is [System.Collections.IDictionary]) { return $Column[$Name] }
+    $property = $Column.PSObject.Properties[$Name]
+    if ($property) { return $property.Value }
+    return $null
 }

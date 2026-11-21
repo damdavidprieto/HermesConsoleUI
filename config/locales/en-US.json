@@ -15,6 +15,11 @@
         "Prompt": "Select options (separated by comma)"
     },
     "Input": {
-        "Prompt": "[?]"
+        "Prompt": "[?]",
+        "Invalid": "Invalid value. Try again."
+    },
+    "Selection": {
+        "Hint": "Up/Down move, Enter select, Esc cancel",
+        "MultiHint": "Up/Down move, Space mark, A all, Enter accept, Esc cancel"
     }
 }

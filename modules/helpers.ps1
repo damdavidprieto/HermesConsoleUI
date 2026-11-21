@@ -35,6 +35,8 @@ function Write-HermesHost {
     .DESCRIPTION
         All module output goes through here; it takes the same parameters as Write-Host.
         A console UI library writes to the host by design, so the analyzer rule is suppressed.
+        When the NO_COLOR environment variable is set to any value (https://no-color.org),
+        colors are dropped and the text is written in the terminal's default color.
     #>
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification = 'Console UI components write to the host by design.')]
     [CmdletBinding()]
@@ -50,7 +52,105 @@ function Write-HermesHost {
     if ($PSBoundParameters.ContainsKey('Object')) {
         $PSBoundParameters['Object'] = @($Object | ForEach-Object { ConvertTo-ConsoleSafeText -Text ([string]$_) })
     }
+    if (Test-NoColor) {
+        $null = $PSBoundParameters.Remove('ForegroundColor')
+        $null = $PSBoundParameters.Remove('BackgroundColor')
+    }
     Write-Host @PSBoundParameters
+}
+
+function Test-NoColor {
+    <#
+    .SYNOPSIS
+        True when the NO_COLOR environment variable asks for output without colors.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    return -not [string]::IsNullOrEmpty($env:NO_COLOR)
+}
+
+function Get-ConsoleWidth {
+    <#
+    .SYNOPSIS
+        Width of the console window in characters, or 0 when it is unknown (output redirected,
+        hosts without a window).
+    #>
+    [CmdletBinding()]
+    [OutputType([int])]
+    param()
+
+    if ([Console]::IsOutputRedirected) { return 0 }
+    try {
+        $width = $Host.UI.RawUI.WindowSize.Width
+        if ($width -gt 0) { return [int]$width }
+    }
+    catch { $null = $_ }
+    return 0
+}
+
+# Interactive selection reads keys through this script block and asks Test-InteractiveConsole
+# whether it can; the tests replace both to drive the menus without a console.
+$script:HermesReadKey = { [Console]::ReadKey($true) }
+$script:HermesInteractiveOverride = $null
+
+function Test-InteractiveConsole {
+    <#
+    .SYNOPSIS
+        True when keys can be read one at a time and the screen redrawn: a real console with
+        neither input nor output redirected (not the ISE, a pipe, a CI log or a remote session).
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    if ($null -ne $script:HermesInteractiveOverride) { return [bool]$script:HermesInteractiveOverride }
+    if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) { return $false }
+    if ($Host.Name -notin 'ConsoleHost', 'Visual Studio Code Host') { return $false }
+    try { $null = [Console]::KeyAvailable; return $true }
+    catch { return $false }
+}
+
+function Get-ConsoleCursorRow {
+    <#
+    .SYNOPSIS
+        Current cursor row, or -1 when there is no console to ask.
+    #>
+    [CmdletBinding()]
+    [OutputType([int])]
+    param()
+
+    try { return [Console]::CursorTop } catch { return -1 }
+}
+
+function Set-ConsoleCursorRow {
+    <#
+    .SYNOPSIS
+        Moves the cursor to the start of a row; does nothing without a console.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Moves the console cursor only.')]
+    [CmdletBinding()]
+    param([int]$Row)
+
+    if ($Row -lt 0) { return }
+    try { [Console]::SetCursorPosition(0, $Row) } catch { $null = $_ }
+}
+
+function Set-ConsoleCursorVisible {
+    <#
+    .SYNOPSIS
+        Shows or hides the cursor where the console allows it; returns the previous state.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Changes the console cursor only.')]
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param([bool]$Visible)
+
+    $previous = $true
+    try { $previous = [Console]::CursorVisible } catch { $null = $_ }
+    try { [Console]::CursorVisible = $Visible } catch { $null = $_ }
+    return $previous
 }
 
 function Resolve-UIColor {
