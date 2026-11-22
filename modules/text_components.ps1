@@ -537,6 +537,16 @@ function Write-ConsoleText {
     .PARAMETER NoNewline
         Do not end the line.
 
+    .PARAMETER Plain
+        Write the text exactly as given, in -Color, without reading color marks: "{" and "}" are
+        written as they are. Use it for text that comes from data (file names, messages, JSON),
+        which would otherwise need every "{" doubled.
+
+    .EXAMPLE
+        Write-ConsoleText -Plain -Color Gray "Settings: $json"
+
+        Writes the JSON with its braces, in gray.
+
     .EXAMPLE
         Write-ConsoleText 'Backup {Success}completed{/} in {Cyan}42 s{/}, {Warning}2 files skipped{/}'
 
@@ -556,7 +566,9 @@ function Write-ConsoleText {
 
         [string]$Color,
 
-        [switch]$NoNewline
+        [switch]$NoNewline,
+
+        [switch]$Plain
     )
 
     process {
@@ -568,7 +580,9 @@ function Write-ConsoleText {
             if ($buffer.Length) { $segments.Add(@($buffer.ToString(), $current)); $null = $buffer.Clear() }
         }
 
-        $i = 0
+        # -Plain: the whole text in one color, braces included (text from data does not need escaping).
+        $i = if ($Plain) { $Text.Length } else { 0 }
+        if ($Plain) { $null = $buffer.Append($Text) }
         while ($i -lt $Text.Length) {
             $ch = $Text[$i]
             if ($ch -eq '{' -and $i + 1 -lt $Text.Length -and $Text[$i + 1] -eq '{') {

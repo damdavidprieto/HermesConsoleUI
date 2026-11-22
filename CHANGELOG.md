@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-22
+
+### Added
+- **`Write-ConsoleText -Plain`**: writes the text exactly as given, braces included, in one color. For text
+  that comes from data, which otherwise needed every `{` doubled.
+- **`Read-ConsoleChoice -DefaultChoice`**: the choice returned when the user just presses Enter, shown after
+  the prompt as `[n]`.
+
+### Fixed
+- **`Read-ConsoleChoice`** no longer asks forever when redirected input has ended (a script, a scheduled
+  task or an agent feeding answers): it returns the default, 0 when allowed, or throws.
+- **`Read-ConsoleSelection`** without an interactive console now picks `-Default` on Enter, like the
+  interactive list, instead of asking again.
+
 ## [2.4.0] - 2026-11-22
 
 ### Added
