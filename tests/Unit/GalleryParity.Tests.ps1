@@ -215,3 +215,42 @@ Describe 'NO_COLOR' {
         ($script:hostOutput | Where-Object Text -EQ 'x').Color | Should -Be 'Red'
     }
 }
+
+Describe 'Register-ConsoleOutputHandler' {
+    AfterEach { Unregister-ConsoleOutputHandler }
+
+    It 'passes every write to the handler, with the text cleaned and the color' {
+        Start-HostCapture
+        $script:copies = [System.Collections.Generic.List[object]]::new()
+        Register-ConsoleOutputHandler { param($Text, $NoNewline, $Color) $script:copies.Add([pscustomobject]@{ Text = $Text; NoNewline = $NoNewline; Color = $Color }) }
+        Write-ConsoleText "a {Red}b$([char]27)[2J{/}"
+        ($script:copies | ForEach-Object Text) -join '' | Should -BeExactly 'a b'
+        ($script:copies | Where-Object Text -EQ 'b').Color | Should -Be 'Red'
+        $script:copies[-1].NoNewline | Should -BeFalse
+        @($script:hostOutput).Count | Should -BeGreaterThan 0
+    }
+
+    It 'writes nothing on screen with -Quiet' {
+        Start-HostCapture
+        $script:copies = [System.Collections.Generic.List[string]]::new()
+        Register-ConsoleOutputHandler -Quiet { param($Text) $script:copies.Add($Text) }
+        Write-ConsoleStatus -Message 'saved' -Type Success
+        @($script:hostOutput).Count | Should -Be 0
+        ($script:copies -join '') | Should -Match 'saved'
+    }
+
+    It 'ignores a handler that fails' {
+        Start-HostCapture
+        Register-ConsoleOutputHandler { throw 'broken' }
+        { Write-ConsoleInfo -Message 'still works' } | Should -Not -Throw
+    }
+
+    It 'stops after Unregister-ConsoleOutputHandler' {
+        Start-HostCapture
+        $script:copies = [System.Collections.Generic.List[string]]::new()
+        Register-ConsoleOutputHandler { param($Text) $script:copies.Add($Text) }
+        Unregister-ConsoleOutputHandler
+        Write-ConsoleInfo -Message 'x'
+        $script:copies.Count | Should -Be 0
+    }
+}

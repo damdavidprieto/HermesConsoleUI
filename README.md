@@ -57,7 +57,7 @@ interactive menu. Each example runs as part of the tests.
 
 | Area | Commands |
 |---|---|
-| Text | `Write-ConsoleText`, `Write-ConsoleTitle`, `Write-ConsoleHeader`, `Write-ConsoleSubtitle`, `Write-ConsoleStatus`, `Write-ConsoleInfo`, `Write-ConsoleError`, `Write-ConsoleMetadata`, `Write-ConsoleSummary`, `Write-ConsoleDiff`, `Write-ConsoleSeparator`, `Write-ConsoleBreadcrumb` |
+| Text | `Write-ConsoleText`, `Register-ConsoleOutputHandler`, `Unregister-ConsoleOutputHandler`, `Write-ConsoleTitle`, `Write-ConsoleHeader`, `Write-ConsoleSubtitle`, `Write-ConsoleStatus`, `Write-ConsoleInfo`, `Write-ConsoleError`, `Write-ConsoleMetadata`, `Write-ConsoleSummary`, `Write-ConsoleDiff`, `Write-ConsoleSeparator`, `Write-ConsoleBreadcrumb` |
 | Data | `Write-ConsoleTable`, `Show-ConsoleList`, `Write-ConsoleTree`, `Write-ConsoleChart`, `Write-ConsoleSparkline`, `Write-ConsoleBox`, `Write-ConsolePanel` |
 | Interaction | `Read-ConsoleSelection`, `Show-ConsoleMenu`, `Read-ConsoleChoice`, `Invoke-ConsoleMenu`, `Read-ConsoleMultiChoice`, `Read-ConsoleInput`, `Read-ConsoleConfirmation`, `Read-ConsolePassword`, `Invoke-ConsoleSpinner`, `Show-ConsoleProgress`, `Write-ConsoleProgress`, `Show-ConsoleNotification` |
 | Layout | `New-ConsoleLayout`, `New-ConsoleRow`, `New-ConsoleColumn`, `Write-ConsoleLayout` |
@@ -98,6 +98,12 @@ with numbers and reads the answer with `Read-ConsoleChoice` or `Read-ConsoleMult
 `Show-ConsoleMenu` clears the screen before drawing. Use `-NoClear` for one menu, or set
 `$env:HERMESCONSOLEUI_NOCLEAR = 1` to keep earlier output on screen in every menu, for example
 while debugging.
+
+## Capturing the output
+
+`Register-ConsoleOutputHandler` passes a copy of everything the components write to a script block
+(the text, whether the line continues, and the color), for logs, transcripts or tests; with `-Quiet`
+nothing is shown on screen. `Unregister-ConsoleOutputHandler` removes it.
 
 ## Tables
 

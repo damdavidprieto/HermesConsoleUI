@@ -604,3 +604,64 @@ function Write-ConsoleText {
         if (-not $NoNewline) { Write-HermesHost '' }
     }
 }
+
+function Register-ConsoleOutputHandler {
+    <#
+    .SYNOPSIS
+        Sends a copy of everything the components write to a script block, for logs, captures or tests.
+
+    .DESCRIPTION
+        From now on, every line or part of a line that a HermesConsoleUI component writes is also passed
+        to -ScriptBlock as three arguments: the text (escape sequences already removed), whether it ends
+        without a new line ($true for parts of a line), and the color name ('' for the default color).
+        With -Quiet the text is only passed to the handler and not shown on screen.
+        Only one handler is active; registering another replaces it. Unregister-ConsoleOutputHandler
+        removes it. An error in the handler is ignored, so it cannot break the interface.
+        Text that Invoke-ConsoleSpinner animates is not passed to the handler.
+
+    .PARAMETER ScriptBlock
+        Receives ($Text, $NoNewline, $Color) for every write.
+
+    .PARAMETER Quiet
+        Do not write to the screen; only call the handler.
+
+    .EXAMPLE
+        $log = [System.Collections.Generic.List[string]]::new()
+        $line = ''
+        Register-ConsoleOutputHandler { param($Text, $NoNewline) $script:line += $Text; if (-not $NoNewline) { $log.Add($script:line); $script:line = '' } }
+
+        Keeps a copy of every complete line in $log while the components keep writing to the screen.
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [scriptblock]$ScriptBlock,
+
+        [switch]$Quiet
+    )
+
+    if (-not $PSCmdlet.ShouldProcess('HermesConsoleUI output', 'Register output handler')) { return }
+    $script:HermesOutputHandler = $ScriptBlock
+    $script:HermesOutputQuiet = [bool]$Quiet
+}
+
+function Unregister-ConsoleOutputHandler {
+    <#
+    .SYNOPSIS
+        Removes the handler registered with Register-ConsoleOutputHandler.
+
+    .DESCRIPTION
+        The components write only to the screen again, as before the handler was registered.
+
+    .EXAMPLE
+        Unregister-ConsoleOutputHandler
+
+        Stops passing output to the handler.
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param()
+
+    if (-not $PSCmdlet.ShouldProcess('HermesConsoleUI output', 'Remove output handler')) { return }
+    $script:HermesOutputHandler = $null
+    $script:HermesOutputQuiet = $false
+}

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-22
+
+### Added
+- **`Register-ConsoleOutputHandler`** and **`Unregister-ConsoleOutputHandler`**: a script block receives a
+  copy of everything the components write (text, whether the line continues, color), for logs, captures
+  of elevated child processes or tests. `-Quiet` writes only to the handler.
+
 ## [2.3.0] - 2026-11-22
 
 Compared with other console UI modules in the PowerShell Gallery (PwshSpectreConsole, PSMenu,
@@ -132,6 +139,7 @@ installs with `Install-Module` and loads automatically (issues #1 and #2).
 ### Added
 - First version, as the Cassiel UI library.
 
-[Unreleased]: https://github.com/damdavidprieto/HermesConsoleUI/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/damdavidprieto/HermesConsoleUI/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/damdavidprieto/HermesConsoleUI/releases/tag/v2.4.0
 [2.3.0]: https://github.com/damdavidprieto/HermesConsoleUI/releases/tag/v2.3.0
 [2.2.0]: https://github.com/damdavidprieto/HermesConsoleUI/releases/tag/v2.2.0

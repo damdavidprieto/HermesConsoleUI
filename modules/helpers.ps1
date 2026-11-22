@@ -37,6 +37,7 @@ function Write-HermesHost {
         A console UI library writes to the host by design, so the analyzer rule is suppressed.
         When the NO_COLOR environment variable is set to any value (https://no-color.org),
         colors are dropped and the text is written in the terminal's default color.
+        A handler registered with Register-ConsoleOutputHandler receives a copy of every write.
     #>
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification = 'Console UI components write to the host by design.')]
     [CmdletBinding()]
@@ -56,8 +57,19 @@ function Write-HermesHost {
         $null = $PSBoundParameters.Remove('ForegroundColor')
         $null = $PSBoundParameters.Remove('BackgroundColor')
     }
-    Write-Host @PSBoundParameters
+    if (-not $script:HermesOutputQuiet) { Write-Host @PSBoundParameters }
+
+    if ($script:HermesOutputHandler) {
+        $separator = if ($PSBoundParameters.ContainsKey('Separator')) { [string]$Separator } else { ' ' }
+        $text = if ($PSBoundParameters.ContainsKey('Object')) { @($PSBoundParameters['Object']) -join $separator } else { '' }
+        $color = if ($PSBoundParameters.ContainsKey('ForegroundColor')) { [string]$ForegroundColor } else { '' }
+        # A failing handler must not break the user interface.
+        try { & $script:HermesOutputHandler $text ([bool]$NoNewline) $color } catch { Write-Verbose "Output handler failed: $($_.Exception.Message)" }
+    }
 }
+
+$script:HermesOutputHandler = $null
+$script:HermesOutputQuiet = $false
 
 function Test-NoColor {
     <#
