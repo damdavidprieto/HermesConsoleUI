@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`Register-ConsoleOutputHandler`** and **`Unregister-ConsoleOutputHandler`**: a script block receives a
   copy of everything the components write (text, whether the line continues, color), for logs, captures
   of elevated child processes or tests. `-Quiet` writes only to the handler.
+- **`Read-ConsoleSelection`**: typing a letter or digit jumps to the next option whose label starts with it.
+- **`Read-ConsoleConfirmation -Default`**: the answer used when the user just presses Enter; the hint shows
+  it in capitals, as in `(Y/n)`.
 
 ## [2.3.0] - 2026-11-22
 

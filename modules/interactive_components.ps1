@@ -565,10 +565,14 @@ function Read-ConsoleConfirmation {
     .DESCRIPTION
         Shows the message followed by the locale's yes/no hint, such as "(Y/N)" or "(S/N)",
         and returns $true when the answer starts with "y" or with the locale's yes letter.
-        Any other answer, including an empty one, returns $false.
+        Any other answer returns $false. An empty answer returns -Default when it is given (the hint
+        then shows the default letter in capitals, such as "(S/n)"), and $false otherwise.
 
     .PARAMETER Message
         The question to ask. Alias: Prompt.
+
+    .PARAMETER Default
+        Answer used when the user just presses Enter.
 
     .EXAMPLE
         if (Read-ConsoleConfirmation -Message "Delete the temporary files?") { Remove-Item $env:TEMP\myapp -Recurse }
@@ -580,15 +584,22 @@ function Read-ConsoleConfirmation {
     param(
         [Parameter(Mandatory = $true)]
         [Alias('Prompt')]
-        [string]$Message
+        [string]$Message,
+
+        [bool]$Default
     )
 
     $hint = Get-UIText -Key 'Confirmation.Prompt' -Default '(Y/N)'
     $yes = @('y')
     if ($hint -match '^\(\s*(\w)') { $yes += $matches[1].ToLowerInvariant() }
+    $hasDefault = $PSBoundParameters.ContainsKey('Default')
+    if ($hasDefault -and $hint -match '^\(\s*(\w)\s*/\s*(\w)\s*\)$') {
+        $hint = if ($Default) { "($($matches[1].ToUpperInvariant())/$($matches[2].ToLowerInvariant()))" } else { "($($matches[1].ToLowerInvariant())/$($matches[2].ToUpperInvariant()))" }
+    }
 
     $response = "$(Read-Host "$Message $hint")".Trim().ToLowerInvariant()
-    return ($response.Length -gt 0 -and $yes -contains $response.Substring(0, 1))
+    if ($response.Length -eq 0) { return ($hasDefault -and $Default) }
+    return ($yes -contains $response.Substring(0, 1))
 }
 
 function Read-ConsolePassword {
@@ -659,7 +670,8 @@ function Read-ConsoleSelection {
         Page Down, Home and End jump further). Enter chooses the highlighted option and Escape
         cancels. With -Multiple, Space marks or unmarks the highlighted option, A marks or unmarks
         all of them, and Enter returns the marked ones (or the highlighted one if none is marked).
-        Long lists scroll in pages of -PageSize lines, with a counter of the position.
+        Long lists scroll in pages of -PageSize lines, with a counter of the position. Typing a letter or
+        digit jumps to the next option that starts with it (A marks all only with -Multiple).
         Returns the chosen option, or with -ReturnIndex its index (from 0). Cancelling returns
         $null, or an empty array with -Multiple.
         Without an interactive console (output or input redirected, the ISE, a remote session or a
@@ -811,6 +823,21 @@ function Read-ConsoleSelectionKey {
         Write-HermesHost (& $fit $footer) -ForegroundColor $colors.Muted
     }
 
+    # A letter or digit jumps to the next option that starts with it, as hotkeys do in menus labelled
+    # "1  Audit", "2  Apply"... Returns whether the highlight moved.
+    $jump = {
+        param([string]$Typed)
+        if ($Typed -notmatch '^[\p{L}\p{N}?]$') { return $false }
+        for ($step = 1; $step -le $count; $step++) {
+            $candidate = ($state.Index + $step) % $count
+            if ($Labels[$candidate].TrimStart().StartsWith($Typed, [StringComparison]::OrdinalIgnoreCase)) {
+                $state.Index = $candidate
+                return $true
+            }
+        }
+        return $false
+    }
+
     $cursorWasVisible = Set-ConsoleCursorVisible -Visible $false
     try {
         & $render
@@ -832,13 +859,14 @@ function Read-ConsoleSelectionKey {
                         if ($state.Marked.Count -eq $count) { $state.Marked.Clear() }
                         else { for ($i = 0; $i -lt $count; $i++) { $null = $state.Marked.Add($i) } }
                     }
+                    else { $redraw = & $jump ([string]$key.KeyChar) }
                 }
                 'Enter' {
                     if ($Multiple -and $state.Marked.Count) { return , ([int[]]@($state.Marked)) }
                     return , ([int[]]@($state.Index))
                 }
                 'Escape' { return $null }
-                default { $redraw = $false }
+                default { $redraw = & $jump ([string]$key.KeyChar) }
             }
             if ($redraw) {
                 # Redraw over the previous list: it always has the same number of lines.
