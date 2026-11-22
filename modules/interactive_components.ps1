@@ -131,6 +131,9 @@ function Show-ConsoleMenu {
     return $selectableCount
 }
 
+# True when input comes from a file or pipe, so Read-Host returning $null means it has ended.
+function Test-HermesInputRedirected { return [Console]::IsInputRedirected }
+
 function Read-ConsoleChoice {
     <#
     .SYNOPSIS
@@ -142,6 +145,10 @@ function Read-ConsoleChoice {
         too large to read, shows a message and asks again. The default prompt and messages
         follow the active locale. With -MaxChoice 0 and -AllowZero $false there is nothing the
         user could type, so it throws instead of asking forever.
+        With -DefaultChoice, an empty answer (Enter) returns that choice. When the input runs
+        out (input redirected from a file or pipe that has ended) it returns -DefaultChoice, or
+        0 when -AllowZero is true, and otherwise throws: it never waits forever for input that
+        cannot arrive.
 
     .PARAMETER MaxChoice
         Highest valid choice, usually the value returned by Show-ConsoleMenu.
@@ -151,6 +158,15 @@ function Read-ConsoleChoice {
 
     .PARAMETER AllowZero
         Accept 0 (shown as the exit option). Defaults to $true.
+
+    .PARAMETER DefaultChoice
+        Choice returned for an empty answer, shown after the prompt. It must be a valid choice.
+        Without it (or with -1, the default) an empty answer asks again.
+
+    .EXAMPLE
+        $choice = Read-ConsoleChoice -MaxChoice 3 -DefaultChoice 1
+
+        Returns 1 when the user just presses Enter.
 
     .EXAMPLE
         $choice = Read-ConsoleChoice -MaxChoice 3
@@ -171,11 +187,17 @@ function Read-ConsoleChoice {
 
         [string]$Prompt,
 
-        [bool]$AllowZero = $true
+        [bool]$AllowZero = $true,
+
+        [ValidateRange(-1, [int]::MaxValue)]
+        [int]$DefaultChoice = -1
     )
 
     if ($MaxChoice -lt 1 -and -not $AllowZero) {
         throw [System.ArgumentException]::new('There is no valid choice: -MaxChoice is 0 and -AllowZero is $false.', 'MaxChoice')
+    }
+    if ($DefaultChoice -ge 0 -and -not (($DefaultChoice -eq 0 -and $AllowZero) -or ($DefaultChoice -ge 1 -and $DefaultChoice -le $MaxChoice))) {
+        throw [System.ArgumentException]::new("-DefaultChoice $DefaultChoice is not a valid choice.", 'DefaultChoice')
     }
     if (-not $Prompt) { $Prompt = Get-UIText -Key 'Menu.SelectPrompt' -Default 'Select an option' }
     $invalid = Get-UIText -Key 'Menu.InvalidOption' -Default 'Invalid option. Try again.'
@@ -185,9 +207,19 @@ function Read-ConsoleChoice {
     }
     Write-HermesHost ''
 
+    $shown = if ($DefaultChoice -ge 0) { "$Prompt [$DefaultChoice]: " } else { "${Prompt}: " }
     while ($true) {
-        Write-HermesHost ($Prompt + ': ') -NoNewline -ForegroundColor (Resolve-UIColor -Role Primary)
-        $val = "$(Read-Host)".Trim()
+        Write-HermesHost $shown -NoNewline -ForegroundColor (Resolve-UIColor -Role Primary)
+        $raw = Read-Host
+        # $null: the input has ended (a redirected file or pipe). Asking again would loop forever.
+        if ($null -eq $raw -and (Test-HermesInputRedirected)) {
+            Write-HermesHost ''
+            if ($DefaultChoice -ge 0) { return $DefaultChoice }
+            if ($AllowZero) { return 0 }
+            throw [System.InvalidOperationException]::new('The input ended before a valid choice was read.')
+        }
+        $val = "$raw".Trim()
+        if ($val -eq '' -and $DefaultChoice -ge 0) { return $DefaultChoice }
 
         # TryParse instead of [int]: a very long number would overflow and end the script.
         $choice = 0
@@ -750,7 +782,8 @@ function Read-ConsoleSelection {
         for ($i = 0; $i -lt $count; $i++) {
             Write-HermesHost ('  [{0}] {1}' -f ($i + 1), $labels[$i]) -ForegroundColor (Resolve-UIColor -Role Muted)
         }
-        $choice = Read-ConsoleChoice -MaxChoice $count -AllowZero $true
+        # Enter picks the same option as in the interactive list.
+        $choice = Read-ConsoleChoice -MaxChoice $count -AllowZero $true -DefaultChoice ([Math]::Min([Math]::Max(0, $Default), $count - 1) + 1)
         if ($choice -gt 0) { $final = @($choice - 1) }
     }
     else {

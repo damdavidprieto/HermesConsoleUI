@@ -326,6 +326,41 @@ Describe 'Progress and prompts' {
         $screen.ToString() | Should -BeExactly 'Working Done'
     }
 
+    It 'Read-ConsoleChoice returns -DefaultChoice for an empty answer and shows it' {
+        Start-HostCapture
+        Mock -ModuleName HermesConsoleUI Read-Host { '' }
+        Read-ConsoleChoice -MaxChoice 3 -DefaultChoice 2 | Should -Be 2
+        Get-CapturedText | Should -Match '\[2\]: '
+    }
+
+    It 'Read-ConsoleChoice rejects a -DefaultChoice that is not a valid choice' {
+        { Read-ConsoleChoice -MaxChoice 3 -DefaultChoice 4 } | Should -Throw '*not a valid choice*'
+        { Read-ConsoleChoice -MaxChoice 3 -DefaultChoice 0 -AllowZero $false } | Should -Throw '*not a valid choice*'
+    }
+
+    It 'Read-ConsoleChoice does not wait forever when redirected input has ended' {
+        Start-HostCapture
+        Mock -ModuleName HermesConsoleUI Read-Host { $null }
+        Mock -ModuleName HermesConsoleUI Test-HermesInputRedirected { $true }
+        Read-ConsoleChoice -MaxChoice 3 -DefaultChoice 2 | Should -Be 2
+        Read-ConsoleChoice -MaxChoice 3 | Should -Be 0
+        { Read-ConsoleChoice -MaxChoice 3 -AllowZero $false } | Should -Throw '*input ended*'
+    }
+
+    It 'Read-ConsoleSelection without a console picks -Default on Enter' {
+        Start-HostCapture
+        Mock -ModuleName HermesConsoleUI Test-InteractiveConsole { $false }
+        Mock -ModuleName HermesConsoleUI Read-Host { '' }
+        Read-ConsoleSelection -Options 'a', 'b', 'c' -Default 1 | Should -Be 'b'
+    }
+
+    It 'Write-ConsoleText -Plain writes braces and color names as text' {
+        Start-HostCapture
+        Write-ConsoleText -Plain -Color Gray '{Red}{"a": 1}{/}'
+        $script:hostOutput[0].Text | Should -BeExactly '{Red}{"a": 1}{/}'
+        $script:hostOutput[0].Color | Should -Be 'Gray'
+    }
+
     It 'Read-ConsoleChoice refuses a menu with no valid choice instead of asking forever' {
         Mock -ModuleName HermesConsoleUI Read-Host { 'x' }
         { Read-ConsoleChoice -MaxChoice 0 -AllowZero $false } | Should -Throw '*no valid choice*'

@@ -1,6 +1,6 @@
 @{
     RootModule           = 'HermesConsoleUI.psm1'
-    ModuleVersion        = '2.4.0'
+    ModuleVersion        = '2.5.0'
     CompatiblePSEditions = @('Desktop', 'Core')
     GUID                 = 'a7f3e8d2-4c91-4b5a-9e7f-2d8c3a1b6e4f'
     Author               = 'David Prieto'
