@@ -37,6 +37,7 @@ Export-ModuleMember -Alias 'Get-AvailableThemes', 'Get-AvailableLocales' -Functi
     'Write-ConsoleTitle', 'Write-ConsoleHeader', 'Write-ConsoleSubtitle', 'Write-ConsoleError',
     'Write-ConsoleInfo', 'Write-ConsoleStatus', 'Write-ConsoleMetadata', 'Write-ConsoleSummary',
     'Write-ConsoleDiff', 'Write-ConsoleSeparator', 'Write-ConsoleBreadcrumb', 'Write-ConsoleText',
+    'Register-ConsoleOutputHandler', 'Unregister-ConsoleOutputHandler',
 
     # Visual components
     'Write-ConsoleBox', 'Write-ConsoleChart', 'Write-ConsoleTree', 'Write-ConsoleTable',

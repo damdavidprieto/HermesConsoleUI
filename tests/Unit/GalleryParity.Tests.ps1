@@ -215,3 +215,67 @@ Describe 'NO_COLOR' {
         ($script:hostOutput | Where-Object Text -EQ 'x').Color | Should -Be 'Red'
     }
 }
+
+Describe 'Register-ConsoleOutputHandler' {
+    AfterEach { Unregister-ConsoleOutputHandler }
+
+    It 'passes every write to the handler, with the text cleaned and the color' {
+        Start-HostCapture
+        $script:copies = [System.Collections.Generic.List[object]]::new()
+        Register-ConsoleOutputHandler { param($Text, $NoNewline, $Color) $script:copies.Add([pscustomobject]@{ Text = $Text; NoNewline = $NoNewline; Color = $Color }) }
+        Write-ConsoleText "a {Red}b$([char]27)[2J{/}"
+        ($script:copies | ForEach-Object Text) -join '' | Should -BeExactly 'a b'
+        ($script:copies | Where-Object Text -EQ 'b').Color | Should -Be 'Red'
+        $script:copies[-1].NoNewline | Should -BeFalse
+        @($script:hostOutput).Count | Should -BeGreaterThan 0
+    }
+
+    It 'writes nothing on screen with -Quiet' {
+        Start-HostCapture
+        $script:copies = [System.Collections.Generic.List[string]]::new()
+        Register-ConsoleOutputHandler -Quiet { param($Text) $script:copies.Add($Text) }
+        Write-ConsoleStatus -Message 'saved' -Type Success
+        @($script:hostOutput).Count | Should -Be 0
+        ($script:copies -join '') | Should -Match 'saved'
+    }
+
+    It 'ignores a handler that fails' {
+        Start-HostCapture
+        Register-ConsoleOutputHandler { throw 'broken' }
+        { Write-ConsoleInfo -Message 'still works' } | Should -Not -Throw
+    }
+
+    It 'stops after Unregister-ConsoleOutputHandler' {
+        Start-HostCapture
+        $script:copies = [System.Collections.Generic.List[string]]::new()
+        Register-ConsoleOutputHandler { param($Text) $script:copies.Add($Text) }
+        Unregister-ConsoleOutputHandler
+        Write-ConsoleInfo -Message 'x'
+        $script:copies.Count | Should -Be 0
+    }
+}
+
+Describe 'Typing to jump and confirmation defaults' {
+    BeforeEach { Start-HostCapture }
+
+    It 'jumps to the option that starts with the typed digit or letter' {
+        $queue = [System.Collections.Generic.Queue[System.ConsoleKeyInfo]]::new()
+        $queue.Enqueue([System.ConsoleKeyInfo]::new([char]'3', [System.ConsoleKey]::D3, $false, $false, $false))
+        $queue.Enqueue([System.ConsoleKeyInfo]::new([char]13, [System.ConsoleKey]::Enter, $false, $false, $false))
+        InModuleScope HermesConsoleUI -Parameters @{ Queue = $queue } {
+            param($Queue)
+            $script:HermesInteractiveOverride = $true
+            $script:HermesKeyQueue = $Queue
+            $script:HermesReadKey = { $script:HermesKeyQueue.Dequeue() }
+        }
+        Read-ConsoleSelection -Options '1  Audit', '2  Apply', '3  Repair' | Should -Be '3  Repair'
+    }
+
+    It 'returns -Default on an empty answer and shows it in capitals' {
+        Mock -ModuleName HermesConsoleUI Read-Host { '' }
+        Read-ConsoleConfirmation -Message 'Continue?' -Default $true | Should -BeTrue
+        Should -Invoke -ModuleName HermesConsoleUI Read-Host -ParameterFilter { $Prompt -cmatch '\([A-Z]/n\)' }
+        Read-ConsoleConfirmation -Message 'Continue?' -Default $false | Should -BeFalse
+        Read-ConsoleConfirmation -Message 'Continue?' | Should -BeFalse
+    }
+}
