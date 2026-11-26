@@ -111,7 +111,7 @@ function Write-ConsoleLayout {
 
     .DESCRIPTION
         Draws each row with its columns side by side. Column widths are computed from their
-        WidthPercent and -TotalWidth; longer lines are cut. If a column's script block
+        WidthPercent and -TotalWidth; longer lines are cut with an ellipsis. If a column's script block
         throws, that column shows "Error rendering column" and the rest of the layout is drawn.
 
     .PARAMETER Layout

@@ -3,7 +3,8 @@
         "ExitPrompt": "(0 pour quitter)",
         "SelectPrompt": "Sélectionnez une option",
         "InvalidOption": "Option invalide. Réessayez.",
-        "PressEnter": "Appuyez sur Entrée pour continuer..."
+        "PressEnter": "Appuyez sur Entrée pour continuer...",
+        "Recommended": "← recommandé"
     },
     "Confirmation": {
         "Prompt": "(O/N)"
@@ -20,6 +21,13 @@
     },
     "Selection": {
         "Hint": "Flèches pour se déplacer, Entrée pour choisir, Échap pour annuler",
-        "MultiHint": "Flèches pour se déplacer, Espace coche, A coche tout, Entrée valide, Échap annule"
+        "MultiHint": "Flèches pour se déplacer, Espace coche, A coche tout, Entrée valide, Échap annule",
+        "FilterHint": "Tapez pour filtrer, flèches pour vous déplacer, Entrée pour choisir, Échap efface ou annule",
+        "FilterMultiHint": "Tapez pour filtrer, Espace coche, Entrée valide, Échap efface ou annule",
+        "NoMatch": "(aucun résultat)",
+        "Cancelled": "(annulé)"
+    },
+    "Choice": {
+        "Invalid": "« {0} » n’est pas une option. Tapez l’une de celles-ci : {1}"
     }
 }

@@ -161,7 +161,8 @@ Describe 'Trees, tables and layouts' {
         ) -Columns @(@{ Header = 'Name'; Property = 'Name' }, @{ Header = 'Size'; Property = 'Size'; Width = 4 })
         $rows = @($script:hostOutput | Where-Object { $_.Text -match 'tab|esc' } | ForEach-Object Text)
         $rows[0] | Should -BeExactly '  tab here  12 '
-        $rows[1] | Should -BeExactly '  escred   345 '
+        # Cut values end with an ellipsis (2.7.0).
+        $rows[1] | Should -BeExactly ('  escred   34' + [char]0x2026 + ' ')
     }
 
     It 'Write-ConsoleLayout starts a new line at each line break of a text column' {

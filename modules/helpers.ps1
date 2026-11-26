@@ -1,11 +1,15 @@
 # HermesConsoleUI - private helper functions.
 #
-# Used by the public components: safe console output, theme and locale lookups,
+# Used by the public components: safe console output, true color, theme and locale lookups,
 # text centering, icons and the layout column merge. Nothing here is exported.
 
 # Any character ConvertTo-ConsoleSafeText removes or changes: C0 and C1 controls except line feed and tab.
 # Escape sequences start with ESC (0x1B) or CSI (0x9B), so text without these has nothing to clean.
 $script:HermesControlRegex = [regex]::new('[\x00-\x08\x0B-\x1F\x7F-\x9F]', 'CultureInvariant')
+
+# Characters that do not take exactly one column: combining marks and zero-width characters (none), East Asian
+# wide characters and emoji (two). Text without any of them is as wide as it is long.
+$script:HermesWideRegex = [regex]::new('[\u0300-\u036F\u1100-\u115F\u200B-\u200F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE00-\uFE0F\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\uD800-\uDFFF]', 'CultureInvariant')
 
 # The roles every theme defines; components ask for colors by role (see Resolve-UIColor).
 $script:HermesColorRoles = @('Primary', 'Secondary', 'Success', 'Warning', 'Error', 'Info', 'Muted', 'Highlight')
@@ -45,7 +49,11 @@ function Write-HermesHost {
         A console UI library writes to the host by design, so the analyzer rule is suppressed.
         When the NO_COLOR environment variable is set to any value (https://no-color.org),
         colors are dropped and the text is written in the terminal's default color.
-        A handler registered with Register-ConsoleOutputHandler receives a copy of every write.
+        A color can also be "#RRGGBB": in a terminal with virtual terminal sequences it is written in
+        that exact color, elsewhere in the nearest console color.
+        A handler registered with Register-ConsoleOutputHandler receives a copy of every write, with
+        the color as given. A status line (Write-ConsoleStatusLine) is cleared before anything else is
+        written, so it never mixes with normal output.
     #>
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification = 'Console UI components write to the host by design.')]
     [CmdletBinding()]
@@ -58,6 +66,7 @@ function Write-HermesHost {
         $BackgroundColor
     )
 
+    if ($script:HermesStatusLineActive) { Clear-ConsoleStatusLine }
     if ($PSBoundParameters.ContainsKey('Object')) {
         # A loop instead of a pipeline: this runs for every piece of text the module writes.
         $clean = [object[]]::new($Object.Count)
@@ -71,12 +80,33 @@ function Write-HermesHost {
         $null = $PSBoundParameters.Remove('ForegroundColor')
         $null = $PSBoundParameters.Remove('BackgroundColor')
     }
-    if (-not $script:HermesOutputQuiet) { Write-Host @PSBoundParameters }
+    if (-not $script:HermesOutputQuiet) {
+        $codes = [System.Collections.Generic.List[string]]::new()
+        foreach ($name in 'ForegroundColor', 'BackgroundColor') {
+            $value = [string]$PSBoundParameters[$name]
+            if ($value -notmatch '^#[0-9A-Fa-f]{6}$') { continue }
+            if (Test-HermesTrueColor) {
+                $rgb = @(1, 3, 5 | ForEach-Object { [Convert]::ToInt32($value.Substring($_, 2), 16) })
+                $codes.Add(('{0};2;{1};{2};{3}' -f $(if ($name -eq 'ForegroundColor') { 38 } else { 48 }), $rgb[0], $rgb[1], $rgb[2]))
+                $null = $PSBoundParameters.Remove($name)
+            }
+            else { $PSBoundParameters[$name] = ConvertTo-NearestConsoleColor -Hex $value }
+        }
+        if ($codes.Count -and $PSBoundParameters.ContainsKey('Object')) {
+            # The escape sequences are added after the text was cleaned: they are the module's own.
+            $joiner = if ($PSBoundParameters.ContainsKey('Separator')) { [string]$Separator } else { ' ' }
+            $esc = [char]27
+            $PSBoundParameters['Object'] = @("$esc[$($codes -join ';')m" + (@($PSBoundParameters['Object']) -join $joiner) + "$esc[0m")
+            $null = $PSBoundParameters.Remove('Separator')
+        }
+        Write-Host @PSBoundParameters
+    }
 
-    if ($script:HermesOutputHandler) {
+    if ($script:HermesOutputHandler -and -not $script:HermesHandlerPaused) {
         $separator = if ($PSBoundParameters.ContainsKey('Separator')) { [string]$Separator } else { ' ' }
-        $text = if ($PSBoundParameters.ContainsKey('Object')) { @($PSBoundParameters['Object']) -join $separator } else { '' }
-        $color = if ($PSBoundParameters.ContainsKey('ForegroundColor')) { [string]$ForegroundColor } else { '' }
+        $text = if ($PSBoundParameters.ContainsKey('Object')) { @($clean) -join $separator } else { '' }
+        $color = if ($PSBoundParameters.ContainsKey('ForegroundColor') -or $ForegroundColor) { [string]$ForegroundColor } else { '' }
+        if (-not [string]::IsNullOrEmpty($env:NO_COLOR)) { $color = '' }
         # A failing handler must not break the user interface.
         try { & $script:HermesOutputHandler $text ([bool]$NoNewline) $color } catch { Write-Verbose "Output handler failed: $($_.Exception.Message)" }
     }
@@ -84,6 +114,85 @@ function Write-HermesHost {
 
 $script:HermesOutputHandler = $null
 $script:HermesOutputQuiet = $false
+# Paused while a list is redrawn in place (Read-ConsoleSelection): the handler gets the answer, not every redraw.
+$script:HermesHandlerPaused = $false
+# A status line written by Write-ConsoleStatusLine is on screen.
+$script:HermesStatusLineActive = $false
+# Tests set these to decide whether true color and live output are available.
+$script:HermesTrueColorOverride = $null
+$script:HermesLiveOverride = $null
+
+function Send-HermesAnswer {
+    <#
+    .SYNOPSIS
+        Passes what the user answered to the output handler (not to the screen, where it already is).
+    .DESCRIPTION
+        Read-Host writes the prompt and echoes the answer itself, without going through Write-HermesHost,
+        so a capture would otherwise lose the questions and answers.
+    #>
+    [CmdletBinding()]
+    param([AllowEmptyString()][string]$Text)
+
+    if (-not $script:HermesOutputHandler -or $script:HermesHandlerPaused) { return }
+    $clean = ConvertTo-ConsoleSafeText -Text $Text
+    try { & $script:HermesOutputHandler $clean $false '' } catch { Write-Verbose "Output handler failed: $($_.Exception.Message)" }
+}
+
+function Test-HermesTrueColor {
+    <#
+    .SYNOPSIS
+        True when "#RRGGBB" colors can be written exactly: a console that understands virtual terminal sequences.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    if ($null -ne $script:HermesTrueColorOverride) { return [bool]$script:HermesTrueColorOverride }
+    if ([Console]::IsOutputRedirected) { return $false }
+    try { return [bool]$Host.UI.SupportsVirtualTerminal } catch { return $false }
+}
+
+# The classic console palette, to show "#RRGGBB" in the nearest of the 16 colors where true color is not available.
+$script:HermesConsolePalette = [ordered]@{
+    Black = 0, 0, 0; DarkBlue = 0, 0, 128; DarkGreen = 0, 128, 0; DarkCyan = 0, 128, 128
+    DarkRed = 128, 0, 0; DarkMagenta = 128, 0, 128; DarkYellow = 128, 128, 0; Gray = 192, 192, 192
+    DarkGray = 128, 128, 128; Blue = 0, 0, 255; Green = 0, 255, 0; Cyan = 0, 255, 255
+    Red = 255, 0, 0; Magenta = 255, 0, 255; Yellow = 255, 255, 0; White = 255, 255, 255
+}
+
+function ConvertTo-NearestConsoleColor {
+    <#
+    .SYNOPSIS
+        The console color closest to a "#RRGGBB" color.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory = $true)][string]$Hex)
+
+    $r = [Convert]::ToInt32($Hex.Substring(1, 2), 16); $g = [Convert]::ToInt32($Hex.Substring(3, 2), 16); $b = [Convert]::ToInt32($Hex.Substring(5, 2), 16)
+    $best = 'White'; $bestDistance = [double]::MaxValue
+    foreach ($name in $script:HermesConsolePalette.Keys) {
+        $c = $script:HermesConsolePalette[$name]
+        $distance = [Math]::Pow($r - $c[0], 2) + [Math]::Pow($g - $c[1], 2) + [Math]::Pow($b - $c[2], 2)
+        if ($distance -lt $bestDistance) { $best = $name; $bestDistance = $distance }
+    }
+    return $best
+}
+
+function Test-HermesLiveOutput {
+    <#
+    .SYNOPSIS
+        True when output reaches a console that can be rewritten in place: not redirected, and not only sent to
+        an output handler (Register-ConsoleOutputHandler -Quiet).
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    if ($null -ne $script:HermesLiveOverride) { return [bool]$script:HermesLiveOverride }
+    if ($script:HermesOutputQuiet) { return $false }
+    try { return -not [Console]::IsOutputRedirected } catch { return $false }
+}
 
 function Test-NoColor {
     <#
@@ -95,25 +204,6 @@ function Test-NoColor {
     param()
 
     return -not [string]::IsNullOrEmpty($env:NO_COLOR)
-}
-
-function Get-ConsoleWidth {
-    <#
-    .SYNOPSIS
-        Width of the console window in characters, or 0 when it is unknown (output redirected,
-        hosts without a window).
-    #>
-    [CmdletBinding()]
-    [OutputType([int])]
-    param()
-
-    if ([Console]::IsOutputRedirected) { return 0 }
-    try {
-        $width = $Host.UI.RawUI.WindowSize.Width
-        if ($width -gt 0) { return [int]$width }
-    }
-    catch { $null = $_ }
-    return 0
 }
 
 # Interactive selection reads keys through this script block and asks Test-InteractiveConsole
@@ -254,9 +344,10 @@ function Get-CenteredText {
 
     # Only control sequences are removed: accented letters and other non-ASCII text stay.
     $cleanText = (ConvertTo-ConsoleSafeText -Text $Text).Trim()
-    if ($cleanText.Length -ge $Width) { return $cleanText }
+    $textWidth = Measure-ConsoleText -Text $cleanText
+    if ($textWidth -ge $Width) { return $cleanText }
 
-    $padding = ' ' * [Math]::Floor(($Width - $cleanText.Length) / 2)
+    $padding = ' ' * [Math]::Floor(($Width - $textWidth) / 2)
     return "$padding$cleanText"
 }
 
@@ -282,6 +373,9 @@ function Merge-LayoutColumn {
     <#
     .SYNOPSIS
         Merges several columns (arrays of lines) into one array of padded lines.
+    .DESCRIPTION
+        Each line is cut with an ellipsis to its column width and padded, measuring the width the text takes
+        on screen (wide characters take two columns).
     #>
     [CmdletBinding()]
     [OutputType([string[]])]
@@ -304,23 +398,16 @@ function Merge-LayoutColumn {
         $line = ''
         for ($c = 0; $c -lt $Columns.Count; $c++) {
             $colContent = $Columns[$c]
-            $width = $Widths[$c]
-
             $content = ''
             if ($null -ne $colContent -and $colContent -is [array] -and $i -lt $colContent.Count) {
                 $content = [string]$colContent[$i]
             }
-
-            $cleanContent = (ConvertTo-ConsoleSafeText -Text $content) -replace '[\n\t]', ' '
-            if ($cleanContent.Length -gt $width) {
-                $cleanContent = $cleanContent.Substring(0, $width)
-            }
-            $line += $cleanContent + (' ' * [Math]::Max(0, ($width - $cleanContent.Length))) + '  '
+            $line += (Format-ConsoleText -Text $content -Width $Widths[$c] -Align Left) + '  '
         }
 
         # Pad the whole line so it overwrites any longer line left on screen.
         $finalLine = $line.TrimEnd()
-        $mergedLines.Add($finalLine + (' ' * [Math]::Max(0, ($expectedTotal - $finalLine.Length))))
+        $mergedLines.Add($finalLine + (' ' * [Math]::Max(0, ($expectedTotal - (Measure-ConsoleText -Text $finalLine)))))
     }
     return $mergedLines.ToArray()
 }

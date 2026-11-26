@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-11-26
+
+### Added
+- **Answers in captures**: the output handler (`Register-ConsoleOutputHandler`) now also receives what the
+  user typed to `Read-ConsoleChoice`, `Read-ConsoleInput`, `Read-ConsoleConfirmation`, `Read-ConsoleMultiChoice`,
+  `Read-ConsoleSelection` and `Read-ConsoleMenu`, so a capture keeps each question with its answer. A password
+  is passed as asterisks. A list redrawn in place is passed once, with the option chosen.
+- **`Write-ConsoleStatusLine`** and **`Clear-ConsoleStatusLine`**: one line of progress rewritten in place, in
+  the same process (unlike `Invoke-ConsoleSpinner`, which runs a job). Nothing is written when the output is
+  redirected, it is never passed to the handler, and anything else the module writes clears it first.
+- **`Write-ConsoleText -Wrap`** (with `-Width` and `-Indent`): long text broken into lines at spaces, colors
+  kept, the following lines aligned.
+- **`Format-ConsoleText`** cuts text to a width with `…` and pads it; **`Measure-ConsoleText`** returns the
+  columns a text takes (East Asian characters and emoji take two, combining accents none).
+- **`Read-ConsoleMenu`**: keyed options with a note column, a color and a recommended one; arrow keys in a
+  console, the key typed elsewhere; `-Default`, `-Cancel` and `-Filter`.
+- **`Read-ConsoleChoice -Choices`** reads a word or letter (`-DefaultValue` for Enter and for input that runs out).
+- **`Read-ConsoleSelection -Filter`**: typing narrows the list to the options that contain the text.
+- **`Write-ConsoleTable`**: per-column `Map` (value to the word shown) and `Colors` (value to the cell color),
+  and `-ReturnLines`.
+- **`Write-ConsoleChart -Thresholds`** (color by percentage) and `-NoNewline`; `-Label` is now optional.
+- **`Get-ConsoleWidth`** (with `-Maximum` and `-Default`) and **`Clear-ConsoleScreen`**, which writes a blank
+  line where the screen cannot be cleared, are now public.
+- **Exact colors**: `#RRGGBB` in color marks, `-Color` parameters and themes, written exactly where the
+  terminal supports virtual terminal sequences and as the nearest console color elsewhere.
+
+### Changed
+- Text cut to fit (tables, lists, panels, boxes, layouts and the arrow-key list) ends with `…`, and widths are
+  measured as the console shows them, so columns stay aligned with East Asian characters and emoji. This costs
+  a little time: a 1,000-row table takes about 165 ms instead of 140 in PowerShell 7 and 235 ms instead of 215 in
+  Windows PowerShell 5.1.
+- `Show-ConsoleMenu` clears the screen with `Clear-ConsoleScreen`: a blank line instead of `Clear-Host` when
+  the output is redirected or only goes to an output handler.
+
 ## [2.6.0] - 2026-11-26
 
 ### Added

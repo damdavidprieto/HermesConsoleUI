@@ -1,4 +1,4 @@
-# HermesConsoleUI - text components.
+﻿# HermesConsoleUI - text components.
 #
 # Titles, headers, status messages and other single-line text output.
 # Every color parameter defaults to the active theme (see Set-ConsoleTheme).
@@ -525,6 +525,8 @@ function Write-ConsoleText {
         as Green, DarkCyan or Yellow) or {Success} (a theme role: Primary, Secondary, Success,
         Warning, Error, Info, Muted or Highlight) switches the color, and {/} goes back to the
         default color. Write {{ for a literal "{". A mark that is not a color is written as text.
+        A mark can also be an exact color, {#FF8800}, shown as is where the terminal supports it and as the
+        nearest console color elsewhere. With -Wrap the text is broken into lines that fit the console.
         Text from your data is written safely, like everywhere in the module: control
         characters and terminal escape sequences are removed.
 
@@ -541,6 +543,24 @@ function Write-ConsoleText {
         Write the text exactly as given, in -Color, without reading color marks: "{" and "}" are
         written as they are. Use it for text that comes from data (file names, messages, JSON),
         which would otherwise need every "{" doubled.
+
+    .PARAMETER Wrap
+        Break the text into lines at spaces so that no line is wider than -Width. Line breaks in the text
+        are kept, and every line after the first, also after a line break, starts at -Indent. Colors carry
+        on across the lines.
+
+    .PARAMETER Width
+        Width for -Wrap, including the indentation. Defaults to the console width (80 when unknown).
+
+    .PARAMETER Indent
+        Spaces before every line after the first with -Wrap. Defaults to the spaces the text starts with, so
+        an indented paragraph stays indented. Use the length of a prefix ("[x] ") to align the lines under
+        the text after it.
+
+    .EXAMPLE
+        Write-ConsoleText -Wrap -Indent 6 '  {Red}[x]{/} The firewall of the public profile is off, so any program can accept connections from the network.'
+
+        Writes the message in lines that fit the console, with the lines after the first aligned under the text.
 
     .EXAMPLE
         Write-ConsoleText -Plain -Color Gray "Settings: $json"
@@ -568,7 +588,15 @@ function Write-ConsoleText {
 
         [switch]$NoNewline,
 
-        [switch]$Plain
+        [switch]$Plain,
+
+        [switch]$Wrap,
+
+        [ValidateRange(0, 1000)]
+        [int]$Width = 0,
+
+        [ValidateRange(-1, 200)]
+        [int]$Indent = -1
     )
 
     process {
@@ -597,6 +625,7 @@ function Write-ConsoleText {
                     if ($name -eq '/') { $next = $Color }
                     elseif ($roles -contains $name) { $next = Resolve-UIColor -Role $name }
                     elseif ($name -match '^[A-Za-z]+$' -and [Enum]::TryParse($name, $true, [ref]$parsed)) { $next = [string]$parsed }
+                    elseif ($name -match '^#[0-9A-Fa-f]{6}$') { $next = $name }
                     if ($name -eq '/' -or $null -ne $next) {
                         & $flush
                         $current = $next
@@ -610,13 +639,262 @@ function Write-ConsoleText {
         }
         & $flush
 
-        foreach ($segment in $segments) {
-            $parameters = @{ Object = $segment[0]; NoNewline = $true }
-            if ($segment[1]) { $parameters.ForegroundColor = $segment[1] }
-            Write-HermesHost @parameters
+        # Assigned in each branch: the output of an if would unroll the list of lines.
+        if ($Wrap) { $lines = Split-ConsoleTextLine -Segments $segments -Width $Width -Indent $Indent }
+        else { $lines = @(, $segments.ToArray()) }
+        for ($l = 0; $l -lt $lines.Count; $l++) {
+            foreach ($segment in $lines[$l]) {
+                $parameters = @{ Object = $segment[0]; NoNewline = $true }
+                if ($segment[1]) { $parameters.ForegroundColor = $segment[1] }
+                Write-HermesHost @parameters
+            }
+            if ($l -lt $lines.Count - 1 -or -not $NoNewline) { Write-HermesHost '' }
         }
-        if (-not $NoNewline) { Write-HermesHost '' }
     }
+}
+
+function Split-ConsoleTextLine {
+    <#
+    .SYNOPSIS
+        Breaks colored segments (text, color) into lines that fit a width, at spaces, for Write-ConsoleText -Wrap.
+    #>
+    [CmdletBinding()]
+    [OutputType([object[]])]
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][System.Collections.Generic.List[object]]$Segments,
+        [int]$Width = 0,
+        [int]$Indent = -1
+    )
+
+    if ($Width -le 0) { $Width = (Get-ConsoleWidth -Default 81) - 1 }
+    $all = -join @($Segments | ForEach-Object { $_[0] })
+    if ($Indent -lt 0) { $Indent = $all.Length - $all.TrimStart(' ').Length }
+    $Indent = [Math]::Min($Indent, [Math]::Max(0, $Width - 10))
+
+    # Words with their color and the spaces before them; "`n" ends a line.
+    $words = [System.Collections.Generic.List[object]]::new()
+    $space = ''
+    foreach ($segment in $Segments) {
+        foreach ($piece in [regex]::Split([string]$segment[0], '(\n|[ \t]+)')) {
+            if ($piece -eq '') { continue }
+            if ($piece -eq "`n") { $words.Add($null); $space = ''; continue }
+            if ($piece -match '^[ \t]+$') { $space += $piece -replace "`t", ' '; continue }
+            $words.Add(@($piece, $segment[1], $space)); $space = ''
+        }
+    }
+
+    $lines = [System.Collections.Generic.List[object]]::new()
+    $line = [System.Collections.Generic.List[object]]::new()
+    $used = 0; $first = $true
+    foreach ($word in $words) {
+        if ($null -eq $word) {
+            $lines.Add($line.ToArray()); $line = [System.Collections.Generic.List[object]]::new(); $used = 0; $first = $false
+            continue
+        }
+        $wordWidth = Measure-ConsoleText -Text $word[0]
+        $before = $word[2]
+        if ($line.Count -eq 0) {
+            # The first line keeps its own leading spaces; the others start at the indentation.
+            $before = if ($first) { $word[2] } else { ' ' * $Indent }
+        }
+        elseif ($before -and $used + $before.Length + $wordWidth -gt $Width) {
+            $lines.Add($line.ToArray()); $line = [System.Collections.Generic.List[object]]::new()
+            $before = ' ' * $Indent; $first = $false; $used = 0
+        }
+        if ($before) { $line.Add(@($before, $null)); $used += $before.Length }
+        $line.Add(@($word[0], $word[1])); $used += $wordWidth
+    }
+    $lines.Add($line.ToArray())
+    return , $lines.ToArray()
+}
+
+function Measure-ConsoleText {
+    <#
+    .SYNOPSIS
+        Returns how many columns a text takes on the console.
+
+    .DESCRIPTION
+        Most characters take one column, but East Asian wide characters and emoji take two, and combining
+        accents and zero-width characters take none. Use it to align text that may contain them; the
+        components that pad or cut text (tables, lists, panels, layouts) measure the same way.
+
+    .PARAMETER Text
+        The text to measure.
+
+    .EXAMPLE
+        Measure-ConsoleText -Text 'Café'
+
+        Returns 4.
+
+    .EXAMPLE
+        Measure-ConsoleText -Text '日本'
+
+        Returns 4: each character takes two columns.
+    #>
+    [CmdletBinding()]
+    [OutputType([int])]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [AllowEmptyString()]
+        [string]$Text
+    )
+
+    if ([string]::IsNullOrEmpty($Text)) { return 0 }
+    if (-not $script:HermesWideRegex.IsMatch($Text)) { return $Text.Length }
+    $width = 0
+    for ($i = 0; $i -lt $Text.Length; $i++) {
+        $code = [int]$Text[$i]
+        # A surrogate pair is a character outside the basic plane: emoji and rare ideographs, two columns.
+        if ($code -ge 0xD800 -and $code -le 0xDBFF -and $i + 1 -lt $Text.Length) { $width += 2; $i++; continue }
+        if (($code -ge 0x0300 -and $code -le 0x036F) -or ($code -ge 0x200B -and $code -le 0x200F) -or ($code -ge 0xFE00 -and $code -le 0xFE0F)) { continue }
+        $wide = ($code -ge 0x1100 -and $code -le 0x115F) -or ($code -ge 0x2E80 -and $code -le 0xA4CF -and $code -ne 0x303F) -or
+            ($code -ge 0xAC00 -and $code -le 0xD7A3) -or ($code -ge 0xF900 -and $code -le 0xFAFF) -or ($code -ge 0xFE30 -and $code -le 0xFE4F) -or
+            ($code -ge 0xFF00 -and $code -le 0xFF60) -or ($code -ge 0xFFE0 -and $code -le 0xFFE6)
+        $width += $(if ($wide) { 2 } else { 1 })
+    }
+    return $width
+}
+
+function Format-ConsoleText {
+    <#
+    .SYNOPSIS
+        Cuts a text to a width with an ellipsis, and optionally pads it, measuring the columns it takes.
+
+    .DESCRIPTION
+        Returns the text as one line (control characters removed, line breaks and tabs as spaces). When it is
+        wider than -Width it is cut and ends with "…", so it is clear that something is missing. With -Align
+        Left or Right the result is padded with spaces to exactly -Width columns. Wide characters count as two
+        columns (see Measure-ConsoleText). Tables, lists, panels and layouts cut their text this way.
+
+    .PARAMETER Text
+        The text to fit.
+
+    .PARAMETER Width
+        Columns available. 0 or less returns an empty string.
+
+    .PARAMETER Align
+        None (the default) only cuts; Left or Right also pads to -Width.
+
+    .PARAMETER NoEllipsis
+        Cut without adding "…".
+
+    .EXAMPLE
+        Format-ConsoleText -Text 'Windows Defender Firewall' -Width 12
+
+        Returns "Windows Def…".
+
+    .EXAMPLE
+        Format-ConsoleText -Text '42' -Width 6 -Align Right
+
+        Returns "    42".
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [AllowEmptyString()]
+        [AllowNull()]
+        [string]$Text,
+
+        [Parameter(Mandatory = $true)]
+        [int]$Width,
+
+        [ValidateSet('None', 'Left', 'Right')]
+        [string]$Align = 'None',
+
+        [switch]$NoEllipsis
+    )
+
+    if ($Width -le 0) { return '' }
+    $line = [string]$Text
+    if ($script:HermesControlRegex.IsMatch($line)) { $line = ConvertTo-ConsoleSafeText -Text $line }
+    $line = $line.Replace("`n", ' ').Replace("`t", ' ')
+    $used = Measure-ConsoleText -Text $line
+    if ($used -gt $Width) {
+        $room = if ($NoEllipsis) { $Width } else { $Width - 1 }
+        if (-not $script:HermesWideRegex.IsMatch($line)) { $cut = $line.Substring(0, $room); $used = $room }
+        else {
+            $builder = [System.Text.StringBuilder]::new(); $used = 0
+            for ($i = 0; $i -lt $line.Length; $i++) {
+                $piece = [string]$line[$i]
+                if ([char]::IsHighSurrogate($line[$i]) -and $i + 1 -lt $line.Length) { $piece = $line.Substring($i, 2) }
+                $pieceWidth = Measure-ConsoleText -Text $piece
+                if ($used + $pieceWidth -gt $room) { break }
+                $null = $builder.Append($piece); $used += $pieceWidth; $i += $piece.Length - 1
+            }
+            $cut = $builder.ToString()
+        }
+        if (-not $NoEllipsis) { $cut += [string][char]0x2026; $used++ }
+        $line = $cut
+    }
+    if ($Align -eq 'Left') { return $line + (' ' * ($Width - $used)) }
+    if ($Align -eq 'Right') { return (' ' * ($Width - $used)) + $line }
+    return $line
+}
+
+function Get-ConsoleWidth {
+    <#
+    .SYNOPSIS
+        Returns the width of the console window in characters.
+
+    .DESCRIPTION
+        Returns the number of columns of the console window, or -Default when it cannot be known (output
+        redirected to a file or a pipe, hosts without a window). With -Maximum the result is never wider,
+        to keep long lines readable on very wide windows.
+
+    .PARAMETER Maximum
+        Largest width to return. 0 (the default) means no limit.
+
+    .PARAMETER Default
+        Width returned when the console width is unknown. Defaults to 0.
+
+    .EXAMPLE
+        $width = Get-ConsoleWidth -Maximum 110 -Default 100
+
+        The window width, at most 110, or 100 in a CI log.
+    #>
+    [CmdletBinding()]
+    [OutputType([int])]
+    param(
+        [ValidateRange(0, [int]::MaxValue)]
+        [int]$Maximum = 0,
+
+        [ValidateRange(0, [int]::MaxValue)]
+        [int]$Default = 0
+    )
+
+    $width = 0
+    if (-not [Console]::IsOutputRedirected) {
+        try { $width = [int]$Host.UI.RawUI.WindowSize.Width } catch { $width = 0 }
+    }
+    if ($width -le 0) { $width = $Default }
+    if ($Maximum -gt 0 -and $width -gt $Maximum) { $width = $Maximum }
+    return $width
+}
+
+function Clear-ConsoleScreen {
+    <#
+    .SYNOPSIS
+        Clears the console screen where that is possible, and writes a blank line otherwise.
+
+    .DESCRIPTION
+        Clear-Host fails or does nothing useful when the output is redirected, goes only to an output handler
+        (Register-ConsoleOutputHandler -Quiet) or comes from a remote session. There a blank line is written
+        instead. Nothing is cleared when clearing is turned off for the session ($env:HERMESCONSOLEUI_NOCLEAR
+        set to 1), so earlier output stays on screen while debugging. Show-ConsoleMenu clears the screen this way.
+
+    .EXAMPLE
+        Clear-ConsoleScreen
+
+        Clears the screen before drawing a new page of a menu.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseCompatibleCommands', '', Justification = 'Clear-Host is a built-in function in Windows PowerShell 5.1; the profile only lists cmdlets.')]
+    [CmdletBinding()]
+    param()
+
+    if (-not (Test-ClearScreenAllowed)) { return }
+    if (-not (Test-HermesLiveOutput)) { Write-HermesHost ''; return }
+    try { Clear-Host } catch { Write-HermesHost '' }
 }
 
 function Register-ConsoleOutputHandler {
@@ -628,10 +906,16 @@ function Register-ConsoleOutputHandler {
         From now on, every line or part of a line that a HermesConsoleUI component writes is also passed
         to -ScriptBlock as three arguments: the text (escape sequences already removed), whether it ends
         without a new line ($true for parts of a line), and the color name ('' for the default color).
+        The answers typed to the prompts (Read-ConsoleChoice, Read-ConsoleInput, Read-ConsoleConfirmation,
+        Read-ConsoleMultiChoice, Read-ConsoleSelection, Read-ConsoleMenu) are passed too, so a capture keeps
+        the questions with their answers; a password is passed as asterisks. A list redrawn in place by
+        Read-ConsoleSelection is passed once, with the option chosen, not at every key. A status line
+        (Write-ConsoleStatusLine) is not passed: it is temporary.
         With -Quiet the text is only passed to the handler and not shown on screen.
         Only one handler is active; registering another replaces it. Unregister-ConsoleOutputHandler
         removes it. An error in the handler is ignored, so it cannot break the interface.
         Text that Invoke-ConsoleSpinner animates is not passed to the handler.
+        When the handler is registered with -Quiet, status lines are not drawn and the screen is not cleared.
 
     .PARAMETER ScriptBlock
         Receives ($Text, $NoNewline, $Color) for every write.

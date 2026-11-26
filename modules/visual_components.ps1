@@ -10,7 +10,7 @@ function Show-ConsoleList {
 
     .DESCRIPTION
         Writes one line per item, prefixed with a bullet or, with -Numbered, with its
-        position. Lines longer than -Width are cut. With -ReturnLines the lines are returned
+        position. Lines longer than -Width are cut with an ellipsis. With -ReturnLines the lines are returned
         instead of written, so the list can be placed inside a layout column or a panel.
 
     .PARAMETER Items
@@ -79,7 +79,7 @@ function Show-ConsoleList {
         $lines = for ($i = 0; $i -lt $all.Count; $i++) {
             $prefix = if ($Numbered) { ($i + 1).ToString() + '. ' } else { $Bullet + ' ' }
             $fullLine = $prefix + [string]$all[$i]
-            if ($Width -gt 0 -and $fullLine.Length -gt $Width) { $fullLine = $fullLine.Substring(0, $Width) }
+            if ($Width -gt 0) { $fullLine = Format-ConsoleText -Text $fullLine -Width $Width }
             $fullLine
         }
 
@@ -182,11 +182,12 @@ function Write-ConsoleChart {
 
     .DESCRIPTION
         Writes "Label: NN% [bar]", where the bar is filled in proportion to Value / Max.
-        Values above Max show a full bar. With -ReturnLines the line is returned instead of
-        written, for use in layouts and panels.
+        Values above Max show a full bar. With -Thresholds the color depends on the percentage, for example
+        red below 70, yellow below 100 and green at 100. With -ReturnLines the line is returned instead of
+        written, for use in layouts and panels. Without -Label only the percentage and the bar are written.
 
     .PARAMETER Label
-        Text shown before the percentage.
+        Text shown before the percentage. Optional.
 
     .PARAMETER Value
         The current value, 0 or more.
@@ -197,8 +198,16 @@ function Write-ConsoleChart {
     .PARAMETER Color
         Console color for the percentage and bar. Defaults to the theme's Success color.
 
+    .PARAMETER Thresholds
+        Colors by percentage: a hashtable from the lowest percentage of each color to the color, such as
+        @{ 0 = 'Red'; 70 = 'Yellow'; 100 = 'Green' }. The color of the highest threshold reached is used;
+        below all of them, -Color.
+
     .PARAMETER Width
         Number of characters in the bar. Defaults to 20.
+
+    .PARAMETER NoNewline
+        Do not end the line, to write more after the bar.
 
     .PARAMETER ReturnLines
         Return the formatted line instead of writing it to the console.
@@ -212,13 +221,17 @@ function Write-ConsoleChart {
         Write-ConsoleChart -Label "Memory" -Value 6144 -Max 8192 -Color Yellow
 
         Displays memory use as 75% of 8192, in yellow.
+
+    .EXAMPLE
+        Write-ConsoleChart -Label "Compliance" -Value 82 -Thresholds @{ 0 = 'Red'; 70 = 'Yellow'; 100 = 'Green' }
+
+        Displays the bar in yellow: 82% reaches 70 but not 100.
     #>
     [CmdletBinding()]
     [OutputType([object[]])]
     param(
-        [Parameter(Mandatory = $true)]
-        [ValidateNotNullOrEmpty()]
-        [string]$Label,
+        [AllowEmptyString()]
+        [string]$Label = '',
 
         [Parameter(Mandatory = $true)]
         [ValidateRange(0, [int]::MaxValue)]
@@ -229,8 +242,12 @@ function Write-ConsoleChart {
 
         [string]$Color,
 
+        [System.Collections.IDictionary]$Thresholds,
+
         [ValidateRange(1, 200)]
         [int]$Width = 20,
+
+        [switch]$NoNewline,
 
         [switch]$ReturnLines
     )
@@ -238,11 +255,18 @@ function Write-ConsoleChart {
     $percent = [Math]::Round(($Value / $Max) * 100)
     $filledLen = [Math]::Max(0, [Math]::Min($Width, [Math]::Floor(($Value / $Max) * $Width)))
     $bar = ([string][char]0x2588 * $filledLen) + ([string][char]0x2591 * ($Width - $filledLen))
+    $prefix = if ($Label) { "${Label}: " } else { '' }
 
-    if ($ReturnLines) { return @("${Label}: $percent% [$bar]") }
+    if ($ReturnLines) { return @("$prefix$percent% [$bar]") }
 
-    Write-HermesHost ('  ' + $Label) -NoNewline -ForegroundColor (Resolve-UIColor -Role Highlight)
-    Write-HermesHost (': ' + $percent + '% [' + $bar + ']') -ForegroundColor (Resolve-UIColor -Color $Color -Role Success)
+    $barColor = Resolve-UIColor -Color $Color -Role Success
+    if ($Thresholds) {
+        $reached = @($Thresholds.Keys | Where-Object { ($_ -as [double]) -le $percent } | Sort-Object { [double]$_ } -Descending)
+        if ($reached.Count) { $barColor = [string]$Thresholds[$reached[0]] }
+    }
+    if ($Label) { Write-HermesHost ('  ' + $Label + ': ') -NoNewline -ForegroundColor (Resolve-UIColor -Role Highlight) }
+    else { Write-HermesHost '  ' -NoNewline }
+    Write-HermesHost ([string]$percent + '% [' + $bar + ']') -ForegroundColor $barColor -NoNewline:$NoNewline
 }
 
 function Write-ConsoleSparkline {
@@ -315,7 +339,7 @@ function Write-ConsolePanel {
 
     .DESCRIPTION
         Runs -Content and draws a border around the strings it returns, with an optional
-        title in the top border. Lines longer than the panel are cut. Only returned output
+        title in the top border. Lines longer than the panel are cut with an ellipsis. Only returned output
         is captured: text the script block writes with Write-Host appears outside the panel,
         so use components with -ReturnLines (or plain strings) inside it.
         The script block runs with your permissions; do not build it from untrusted input.
@@ -386,11 +410,10 @@ function Write-ConsolePanel {
     $contentLines = @(& $Content | ForEach-Object { ([string]$_) -split "`n" })
     if ($contentLines.Count -eq 0) { $contentLines = @('') }
     foreach ($line in $contentLines) {
-        $trimmed = (ConvertTo-ConsoleSafeText -Text $line).TrimEnd() -replace "`t", '    '
-        if ($trimmed.Length -gt $innerWidth) { $trimmed = $trimmed.Substring(0, $innerWidth) }
+        $trimmed = Format-ConsoleText -Text (((ConvertTo-ConsoleSafeText -Text $line).TrimEnd()) -replace "`t", '    ') -Width $innerWidth
         Write-HermesHost ('  ' + $vertical + ' ') -NoNewline -ForegroundColor $Color
         Write-HermesHost $trimmed -NoNewline
-        Write-HermesHost (' ' * ($innerWidth - $trimmed.Length) + ' ' + $vertical) -ForegroundColor $Color
+        Write-HermesHost (' ' * ($innerWidth - (Measure-ConsoleText -Text $trimmed)) + ' ' + $vertical) -ForegroundColor $Color
     }
 
     Write-HermesHost ('  ' + $bottomLeft + ($horizontal * ($Width - 2)) + $bottomRight) -ForegroundColor $Color
@@ -405,7 +428,7 @@ function Write-ConsoleBox {
     .DESCRIPTION
         Draws a "+---+" box around the message. Each line of a multi-line message becomes a
         line in the box. By default the box fits the longest line; with -Width longer lines
-        are cut. ASCII borders render in every console font.
+        are cut with an ellipsis. ASCII borders render in every console font.
 
     .PARAMETER Message
         The text to put in the box. Line breaks start new lines.
@@ -430,7 +453,7 @@ function Write-ConsoleBox {
         Displays a 30-character yellow box with two lines.
     #>
     [CmdletBinding()]
-    [OutputType([object[]])]
+    [OutputType([string[]], [object[]])]
     param(
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
@@ -445,16 +468,17 @@ function Write-ConsoleBox {
     )
 
     $messageLines = @(($Message -replace "`r", '') -split "`n" | ForEach-Object { $_.Trim() })
-    $boxWidth = if ($Width -gt 4) { $Width } else { (($messageLines | Measure-Object -Property Length -Maximum).Maximum) + 4 }
+    $longest = 0
+    foreach ($msg in $messageLines) { $longest = [Math]::Max($longest, (Measure-ConsoleText -Text $msg)) }
+    $boxWidth = if ($Width -gt 4) { $Width } else { $longest + 4 }
     $inner = $boxWidth - 4
     $border = '+' + ('-' * ($boxWidth - 2)) + '+'
 
-    $lines = @($border)
-    foreach ($msg in $messageLines) {
-        $text = if ($msg.Length -gt $inner) { $msg.Substring(0, $inner) } else { $msg.PadRight($inner) }
-        $lines += "| $text |"
-    }
-    $lines += $border
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add($border)
+    foreach ($msg in $messageLines) { $lines.Add('| ' + (Format-ConsoleText -Text $msg -Width $inner -Align Left) + ' |') }
+    $lines.Add($border)
+    $lines = $lines.ToArray()
 
     if ($ReturnLines) { return $lines }
 
@@ -474,10 +498,13 @@ function Write-ConsoleTable {
         property. A column with Width keeps that width; one without it is as wide as its longest
         value or header (up to the MaxColumnWidth of the theme configuration, 80 by default), and
         when the table does not fit in the console window the widest automatic columns are
-        narrowed. Longer values are cut so the columns stay aligned. Without -Columns, one column
-        is created for each property of the first object.
+        narrowed. Longer values are cut with an ellipsis so the columns stay aligned. Without -Columns,
+        one column is created for each property of the first object.
         Columns whose values are all numbers are aligned to the right; set Align to Left or Right
         in a column definition to choose.
+        A column definition can also have Map, a hashtable that replaces values by the text to show
+        (for example Compliant by "OK"), and Colors, a hashtable from value to the color of that cell:
+        states then read as words, not only as colors.
         With -ColorMapProperty and -ColorMap, each row is colored according to the value of
         that property, for example green for "Running" and red for "Stopped".
 
@@ -485,8 +512,9 @@ function Write-ConsoleTable {
         The objects to display. Accepts pipeline input.
 
     .PARAMETER Columns
-        Column definitions: hashtables (or objects) with Header and Property, and optionally
-        Width (characters, including the space before the next column) and Align (Left or Right).
+        Column definitions: hashtables (or objects) with Header and Property, and optionally Width
+        (characters, including the space before the next column), Align (Left or Right), Map (value to
+        text shown) and Colors (value to cell color).
 
     .PARAMETER Title
         Optional title shown above the table. Alias: Header.
@@ -497,6 +525,10 @@ function Write-ConsoleTable {
     .PARAMETER ColorMap
         Hashtable from property value to console color, used with -ColorMapProperty.
 
+    .PARAMETER ReturnLines
+        Return the lines of the table (header, rule and rows, without colors) instead of writing them, for
+        panels and layouts.
+
     .EXAMPLE
         Get-Service | Select-Object -First 5 | Write-ConsoleTable -Columns @(
             @{ Header = "Name"; Property = "Name"; Width = 25 }
@@ -506,11 +538,20 @@ function Write-ConsoleTable {
         Displays five services with running ones in green and stopped ones in red.
 
     .EXAMPLE
+        Write-ConsoleTable -Data $results -Columns @(
+            @{ Header = 'Rule'; Property = 'Name' }
+            @{ Header = 'State'; Property = 'Status'; Map = @{ Compliant = 'OK'; NonCompliant = 'Pending' }; Colors = @{ Compliant = 'Green'; NonCompliant = 'Red' } }
+        )
+
+        Shows each state as a word in its own color.
+
+    .EXAMPLE
         Write-ConsoleTable -Data (Get-ChildItem -File | Select-Object Name, Length) -Title "Files"
 
         Displays the files with one column per property.
     #>
     [CmdletBinding()]
+    [OutputType([object[]])]
     param(
         [Parameter(ValueFromPipeline = $true)]
         [AllowNull()]
@@ -523,7 +564,9 @@ function Write-ConsoleTable {
 
         [string]$ColorMapProperty = '',
 
-        [hashtable]$ColorMap = @{}
+        [hashtable]$ColorMap = @{},
+
+        [switch]$ReturnLines
     )
 
     begin {
@@ -534,7 +577,9 @@ function Write-ConsoleTable {
     }
     end {
         if ($rows.Count -eq 0) {
-            Write-HermesHost ('  ' + (Get-UIText -Key 'Table.NoData' -Default '(No data to display)')) -ForegroundColor (Resolve-UIColor -Role Muted)
+            $empty = '  ' + (Get-UIText -Key 'Table.NoData' -Default '(No data to display)')
+            if ($ReturnLines) { return @($empty.TrimStart()) }
+            Write-HermesHost $empty -ForegroundColor (Resolve-UIColor -Role Muted)
             return
         }
 
@@ -542,19 +587,39 @@ function Write-ConsoleTable {
             $Columns = @($rows[0].PSObject.Properties | ForEach-Object { @{ Header = $_.Name; Property = $_.Name } })
         }
         $Columns = @(Resolve-TableColumn -Columns $Columns -Rows $rows)
+        $ellipsis = [string][char]0x2026
+
+        $header = -join @(foreach ($col in $Columns) { Format-TableCell -Value $col.Header -Width $col.Width -Align $col.Align })
+        $rule = (-join @(foreach ($col in $Columns) { ('-' * ($col.Width - 1)) + ' ' })).TrimEnd()
+
+        # The cell texts were cleaned once by Resolve-TableColumn; here they are only cut and padded.
+        $cellText = {
+            param($col, [int]$r)
+            $text = $col.Texts[$r]
+            $room = $col.Width - 1
+            if ($col.Wide) { return (Format-ConsoleText -Text $text -Width $room -Align $(if ($col.Align -eq 'Right') { 'Right' } else { 'Left' })) + ' ' }
+            if ($text.Length -gt $room) { $text = $text.Substring(0, $room - 1) + $ellipsis }
+            if ($col.Align -eq 'Right') { return $text.PadLeft($room) + ' ' }
+            return $text.PadRight($col.Width)
+        }
+
+        if ($ReturnLines) {
+            $out = [System.Collections.Generic.List[string]]::new()
+            if ($Title) { $out.Add($Title) }
+            $out.Add($header.TrimEnd()); $out.Add($rule)
+            for ($r = 0; $r -lt $rows.Count; $r++) { $out.Add((-join @(foreach ($col in $Columns) { & $cellText $col $r })).TrimEnd()) }
+            return $out.ToArray()
+        }
 
         $headerColor = Resolve-UIColor -Role Secondary
         $rowColor = Resolve-UIColor -Role Highlight
+        $cellColors = @($Columns | Where-Object { $_.Colors }).Count -gt 0
 
         Write-HermesHost ''
         if ($Title) { Write-HermesHost ('  ' + $Title) -ForegroundColor (Resolve-UIColor -Role Primary) }
+        Write-HermesHost ('  ' + $header) -ForegroundColor $headerColor
+        Write-HermesHost ('  ' + $rule) -ForegroundColor (Resolve-UIColor -Role Muted)
 
-        $header = foreach ($col in $Columns) { Format-TableCell -Value $col.Header -Width $col.Width -Align $col.Align }
-        Write-HermesHost ('  ' + (-join $header)) -ForegroundColor $headerColor
-        $rule = foreach ($col in $Columns) { ('-' * ($col.Width - 1)) + ' ' }
-        Write-HermesHost ('  ' + (-join $rule).TrimEnd()) -ForegroundColor (Resolve-UIColor -Role Muted)
-
-        # The cell texts were cleaned once by Resolve-TableColumn; here they are only cut and padded.
         $line = [System.Text.StringBuilder]::new()
         for ($r = 0; $r -lt $rows.Count; $r++) {
             $color = $rowColor
@@ -562,11 +627,24 @@ function Write-ConsoleTable {
                 $key = [string]$rows[$r].$ColorMapProperty
                 if ($ColorMap.ContainsKey($key)) { $color = $ColorMap[$key] }
             }
+            if ($cellColors) {
+                # Cells with their own color: one write per cell.
+                Write-HermesHost '  ' -NoNewline
+                foreach ($col in $Columns) {
+                    $cellColor = $color
+                    if ($col.Colors -and $col.Colors.Contains($col.Keys[$r])) { $cellColor = $col.Colors[$col.Keys[$r]] }
+                    Write-HermesHost (& $cellText $col $r) -NoNewline -ForegroundColor $cellColor
+                }
+                Write-HermesHost ''
+                continue
+            }
+            # The same as $cellText, written out: a script block call per cell would double the time of a large table.
             $null = $line.Clear().Append('  ')
             foreach ($col in $Columns) {
+                if ($col.Wide) { $null = $line.Append((& $cellText $col $r)); continue }
                 $text = $col.Texts[$r]
                 $room = $col.Width - 1
-                if ($text.Length -gt $room) { $text = $text.Substring(0, $room) }
+                if ($text.Length -gt $room) { $text = $text.Substring(0, $room - 1) + $ellipsis }
                 if ($col.Align -eq 'Right') { $null = $line.Append($text.PadLeft($room)).Append(' ') }
                 else { $null = $line.Append($text.PadRight($col.Width)) }
             }
@@ -586,10 +664,8 @@ function Format-TableCell {
     param($Value, [int]$Width, [string]$Align = 'Left')
 
     if ($Width -lt 2) { $Width = 2 }
-    $text = (ConvertTo-ConsoleSafeText -Text ([string]$Value)) -replace '[\n\t]', ' '
-    if ($text.Length -gt ($Width - 1)) { $text = $text.Substring(0, $Width - 1) }
-    if ($Align -eq 'Right') { return $text.PadLeft($Width - 1) + ' ' }
-    return $text.PadRight($Width)
+    $side = if ($Align -eq 'Right') { 'Right' } else { 'Left' }
+    return (Format-ConsoleText -Text ([string]$Value) -Width ($Width - 1) -Align $side) + ' '
 }
 
 function Resolve-TableColumn {
@@ -620,25 +696,32 @@ function Resolve-TableColumn {
         $header = Get-ColumnValue $col 'Header'
         if ($null -eq $header) { $header = $property }
         # Each value is read and cleaned once: the texts are used for the width and for the rows.
+        $map = Get-ColumnValue $col 'Map'
+        $colors = Get-ColumnValue $col 'Colors'
         $texts = [string[]]::new($Rows.Count)
-        $longest = ([string]$header).Length
-        $allNumbers = $true; $present = 0
+        $keys = [string[]]::new($Rows.Count)
+        $longest = Measure-ConsoleText -Text ([string]$header)
+        $allNumbers = $true; $present = 0; $wide = $false
         for ($r = 0; $r -lt $Rows.Count; $r++) {
             $value = $Rows[$r].$property
             if ($null -ne $value) { $present++; if ($numeric -notcontains $value.GetType()) { $allNumbers = $false } }
-            $text = [string]$value
+            $keys[$r] = [string]$value
+            $text = if ($map -and $map.Contains($keys[$r])) { [string]$map[$keys[$r]] } else { $keys[$r] }
             if ($script:HermesControlRegex.IsMatch($text)) { $text = ConvertTo-ConsoleSafeText -Text $text }
             $text = $text.Replace("`n", ' ').Replace("`t", ' ')
             $texts[$r] = $text
-            if ($text.Length -gt $longest) { $longest = $text.Length }
+            $textWidth = $text.Length
+            if ($script:HermesWideRegex.IsMatch($text)) { $wide = $true; $textWidth = Measure-ConsoleText -Text $text }
+            if ($textWidth -gt $longest) { $longest = $textWidth }
         }
+        if ($map) { $allNumbers = $false }
         $width = Get-ColumnValue $col 'Width'
         $auto = -not ($width -as [int])
         if ($auto) { $width = [Math]::Min([Math]::Max([int]$longest + 1, 4), $maxWidth) }
         if ([int]$width -lt 2) { $width = 2 }
         $align = Get-ColumnValue $col 'Align'
         if (-not $align) { $align = if ($present -and $allNumbers) { 'Right' } else { 'Left' } }
-        [pscustomobject]@{ Header = $header; Property = $property; Width = [int]$width; Align = $align; Auto = $auto; Texts = $texts }
+        [pscustomobject]@{ Header = $header; Property = $property; Width = [int]$width; Align = $align; Auto = $auto; Texts = $texts; Keys = $keys; Colors = $colors; Wide = $wide }
     }
     $resolved = @($resolved)
 

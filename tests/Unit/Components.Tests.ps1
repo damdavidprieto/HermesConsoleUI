@@ -229,12 +229,12 @@ Describe 'Write-ConsoleTable' {
         ($script:hostOutput | Where-Object Text -Match '^\s+b\s*$').Color | Should -Be 'Red'
     }
 
-    It 'cuts long values so the columns stay aligned' {
+    It 'cuts long values with an ellipsis so the columns stay aligned' {
         Write-ConsoleTable -Data ([pscustomobject]@{ A = 'x' * 50; B = 'y' }) -Columns @(
             @{ Header = 'A'; Property = 'A'; Width = 10 }
             @{ Header = 'B'; Property = 'B'; Width = 5 }
         )
-        ($script:hostOutput | Where-Object Text -Match 'y').Text | Should -Match '^\s+x{9} y'
+        ($script:hostOutput | Where-Object Text -Match 'y').Text | Should -Match ('^\s+x{8}' + [char]0x2026 + ' y')
     }
 }
 
