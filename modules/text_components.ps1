@@ -19,6 +19,18 @@ function Write-ConsoleTitle {
     .PARAMETER Color
         Console color for the title and borders. Defaults to the theme's Primary color.
 
+    .PARAMETER Subtitle
+        Optional text under the title, in the theme's Muted color; wrapped to the line width with -Align Left.
+
+    .PARAMETER Align
+        Center (the default): the title centered between two lines of equal signs. Left: the title at the
+        layout margin (Set-ConsoleLayout), the subtitle wrapped under it and one rule as wide as the line.
+
+    .EXAMPLE
+        Write-ConsoleTitle -Title "Audit" -Subtitle "Checks every rule up to your target level." -Align Left
+
+        Displays the title, the subtitle and a rule across the line.
+
     .EXAMPLE
         Write-ConsoleTitle -Title "System Report"
 
@@ -35,16 +47,31 @@ function Write-ConsoleTitle {
         [ValidateNotNullOrEmpty()]
         [string]$Title,
 
-        [string]$Color
+        [string]$Color,
+
+        [string]$Subtitle,
+
+        [ValidateSet('Center', 'Left')]
+        [string]$Align = 'Center'
     )
 
     $Color = Resolve-UIColor -Color $Color -Role Primary
+    $muted = Resolve-UIColor -Role Muted
+    if ($Align -eq 'Left') {
+        $margin = ' ' * (Get-HermesMargin)
+        Write-HermesHost ''
+        Write-HermesHost ($margin + $Title) -ForegroundColor $Color
+        if ($Subtitle) { Write-ConsoleText -Plain -Wrap -Color $muted -Text ($margin + $Subtitle) }
+        Write-HermesHost ([string][char]0x2500 * (Get-HermesLineWidth)) -ForegroundColor $muted
+        return
+    }
     $width = [Math]::Max($Title.Length + 4, 60)
     $border = '=' * $width
 
     Write-HermesHost ''
     Write-HermesHost $border -ForegroundColor $Color
     Write-HermesHost (Get-CenteredText -Text $Title -Width $width) -ForegroundColor $Color
+    if ($Subtitle) { Write-HermesHost (Get-CenteredText -Text $Subtitle -Width $width) -ForegroundColor $muted }
     Write-HermesHost $border -ForegroundColor $Color
     Write-HermesHost ''
 }
@@ -65,10 +92,22 @@ function Write-ConsoleHeader {
     .PARAMETER Color
         Console color for the header. Defaults to the theme's Secondary color.
 
+    .PARAMETER Note
+        Optional text after the header, on the same line, in the theme's Muted color, such as a count.
+
+    .PARAMETER Compact
+        A section header for reports: a blank line before, the text at the layout margin without ">>>", and
+        no blank line after.
+
     .EXAMPLE
         Write-ConsoleHeader -Text "Configuration Settings"
 
         Displays ">>> Configuration Settings".
+
+    .EXAMPLE
+        Write-ConsoleHeader -Text "Firewall" -Note "4 of 6 compliant" -Compact
+
+        Displays "  Firewall   4 of 6 compliant" after a blank line.
     #>
     [CmdletBinding()]
     param(
@@ -77,13 +116,20 @@ function Write-ConsoleHeader {
         [Alias('Title')]
         [string]$Text,
 
-        [string]$Color
+        [string]$Color,
+
+        [string]$Note,
+
+        [switch]$Compact
     )
 
     $Color = Resolve-UIColor -Color $Color -Role Secondary
+    $segments = [System.Collections.Generic.List[object]]::new()
+    $segments.Add(@($(if ($Compact) { (' ' * (Get-HermesMargin)) + $Text } else { '>>> ' + $Text }), $Color))
+    if ($Note) { $segments.Add(@(('   ' + $Note), (Resolve-UIColor -Role Muted))) }
     Write-HermesHost ''
-    Write-HermesHost ('>>> ' + $Text) -ForegroundColor $Color
-    Write-HermesHost ''
+    Write-HermesSegment -Segments $segments.ToArray()
+    if (-not $Compact) { Write-HermesHost '' }
 }
 
 function Write-ConsoleSubtitle {
@@ -441,10 +487,14 @@ function Write-ConsoleSeparator {
         Character (or short string) to repeat. Defaults to "-".
 
     .PARAMETER Length
-        Number of times to repeat it, from 1 to 200. Defaults to 60.
+        Number of times to repeat it, up to 1000. Defaults to 60. 0 fills the line width of the layout
+        (Set-ConsoleLayout) after the indentation.
 
     .PARAMETER Color
         Console color for the line. Defaults to the theme's Muted color.
+
+    .PARAMETER Indent
+        Spaces before the line. Defaults to 2.
 
     .EXAMPLE
         Write-ConsoleSeparator
@@ -461,14 +511,18 @@ function Write-ConsoleSeparator {
         [ValidateNotNullOrEmpty()]
         [string]$Character = '-',
 
-        [ValidateRange(1, 200)]
+        [ValidateRange(0, 1000)]
         [int]$Length = 60,
 
-        [string]$Color
+        [string]$Color,
+
+        [ValidateRange(0, 200)]
+        [int]$Indent = 2
     )
 
     $Color = Resolve-UIColor -Color $Color -Role Muted
-    Write-HermesHost ('  ' + ($Character * $Length)) -ForegroundColor $Color
+    if ($Length -eq 0) { $Length = [Math]::Max(1, [Math]::Floor(((Get-HermesLineWidth) - $Indent) / [Math]::Max(1, $Character.Length))) }
+    Write-HermesHost ((' ' * $Indent) + ($Character * $Length)) -ForegroundColor $Color
 }
 
 function Write-ConsoleBreadcrumb {
@@ -550,7 +604,8 @@ function Write-ConsoleText {
         on across the lines.
 
     .PARAMETER Width
-        Width for -Wrap, including the indentation. Defaults to the console width (80 when unknown).
+        Width for -Wrap, including the indentation. Defaults to the line width of the layout: the console width
+        (80 when unknown), at most the -MaxWidth of Set-ConsoleLayout.
 
     .PARAMETER Indent
         Spaces before every line after the first with -Wrap. Defaults to the spaces the text starts with, so
@@ -643,12 +698,7 @@ function Write-ConsoleText {
         if ($Wrap) { $lines = Split-ConsoleTextLine -Segments $segments -Width $Width -Indent $Indent }
         else { $lines = @(, $segments.ToArray()) }
         for ($l = 0; $l -lt $lines.Count; $l++) {
-            foreach ($segment in $lines[$l]) {
-                $parameters = @{ Object = $segment[0]; NoNewline = $true }
-                if ($segment[1]) { $parameters.ForegroundColor = $segment[1] }
-                Write-HermesHost @parameters
-            }
-            if ($l -lt $lines.Count - 1 -or -not $NoNewline) { Write-HermesHost '' }
+            Write-HermesSegment -Segments $lines[$l] -NoNewline:($l -eq $lines.Count - 1 -and $NoNewline)
         }
     }
 }
@@ -666,7 +716,7 @@ function Split-ConsoleTextLine {
         [int]$Indent = -1
     )
 
-    if ($Width -le 0) { $Width = (Get-ConsoleWidth -Default 81) - 1 }
+    if ($Width -le 0) { $Width = Get-HermesLineWidth }
     $all = -join @($Segments | ForEach-Object { $_[0] })
     if ($Indent -lt 0) { $Indent = $all.Length - $all.TrimStart(' ').Length }
     $Indent = [Math]::Min($Indent, [Math]::Max(0, $Width - 10))
@@ -841,12 +891,13 @@ function Get-ConsoleWidth {
         Returns the number of columns of the console window, or -Default when it cannot be known (output
         redirected to a file or a pipe, hosts without a window). With -Maximum the result is never wider,
         to keep long lines readable on very wide windows.
+        Without -Maximum and -Default, the MaxWidth and DefaultWidth of Set-ConsoleLayout apply.
 
     .PARAMETER Maximum
-        Largest width to return. 0 (the default) means no limit.
+        Largest width to return. 0 means no limit. Defaults to the layout MaxWidth (no limit unless set).
 
     .PARAMETER Default
-        Width returned when the console width is unknown. Defaults to 0.
+        Width returned when the console width is unknown. Defaults to the layout DefaultWidth (0 unless set).
 
     .EXAMPLE
         $width = Get-ConsoleWidth -Maximum 110 -Default 100
@@ -863,6 +914,8 @@ function Get-ConsoleWidth {
         [int]$Default = 0
     )
 
+    if (-not $PSBoundParameters.ContainsKey('Maximum')) { $Maximum = $script:HermesLayout.MaxWidth }
+    if (-not $PSBoundParameters.ContainsKey('Default')) { $Default = $script:HermesLayout.DefaultWidth }
     $width = 0
     if (-not [Console]::IsOutputRedirected) {
         try { $width = [int]$Host.UI.RawUI.WindowSize.Width } catch { $width = 0 }

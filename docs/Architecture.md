@@ -10,7 +10,7 @@ flowchart TD
     psm1 --> config[src/Core/Config.ps1<br/>themes, colors, icons]
     psm1 --> locale[src/Core/Localization.ps1<br/>UI strings]
     psm1 --> helpers[modules/helpers.ps1<br/>private helpers]
-    psm1 --> components[modules/*_components.ps1<br/>text, visual, interactive, layout]
+    psm1 --> components[modules/*_components.ps1<br/>text, visual, interactive, layout, line]
     config -. reads .-> json[config/ui_config.json]
     locale -. reads .-> locales[config/locales/*.json]
     components --> helpers
@@ -30,6 +30,7 @@ flowchart TD
 | `modules/visual_components.ps1` | Lists, trees, charts, sparklines, panels, boxes and tables. |
 | `modules/interactive_components.ps1` | Menus, choices, prompts, spinner, progress and notifications. |
 | `modules/layout_components.ps1` | Side-by-side layouts. |
+| `modules/line_components.ps1` | Lines of segments, named styles, layout settings, key-value lists, grids, captures to a file, `Wait-ConsoleKey` and the `Write-Host` redirection. |
 
 ## How a component writes
 
@@ -46,6 +47,16 @@ Every component follows the same three steps:
 Components that can be embedded in panels or layouts also accept `-ReturnLines` and then return
 their lines instead of writing them.
 
+A line with several colors is better written with `Write-HermesSegment`, which takes (text, color) pairs:
+where the console supports virtual terminal sequences it writes the whole line in one `Write-Host` call,
+and the output handler and the capture still receive each piece. `ConvertTo-HermesLine` lays the segments
+of `Write-ConsoleLine` out in such lines; widths come from `Get-HermesLineWidth` and the indentation from
+`Get-HermesMargin`, which follow `Set-ConsoleLayout`.
+
+Output reaches the handler and the capture file through `Send-HermesOutput`. While a capture runs,
+`Test-InteractiveConsole` and `Test-HermesLiveOutput` are false, so prompts read typed answers and nothing
+is rewritten in place.
+
 ## Configuration
 
 `config/ui_config.json` is merged over the built-in settings in `src/Core/Config.ps1`
@@ -59,8 +70,8 @@ setting together with the code that reads it.
 1. Put it in the `modules/*_components.ps1` file of its kind, as an advanced function with complete
    comment-based help: synopsis, description, every parameter and at least one example (the QA tests
    check it).
-2. Write only through `Write-HermesHost`, never `Write-Host`, so control sequences are removed, `NO_COLOR`
-   is honoured and the output handler receives a copy.
+2. Write only through `Write-HermesHost` or `Write-HermesSegment`, never `Write-Host`, so control sequences
+   are removed, `NO_COLOR` is honoured and the output handler and the capture receive a copy.
 3. Take colors with `Resolve-UIColor -Color $Color -Role <role>`, one of the roles in
    `$script:HermesColorRoles`, so the component follows the theme and an explicit `-Color` still wins.
 4. Take fixed texts with `Get-UIText -Key <Section.Key> -Default '<English>'`, and add the key to every file

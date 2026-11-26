@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-11-26
+
+### Added
+- **`Write-ConsoleLine`**: one line made of segments, each with its own color and width; one segment can
+  fill the rest of the line, cut with `…` or wrapped with its following lines aligned under it. Segments are
+  strings, arrays (text, color, width) or hashtables (`Text`, `Color`, `Width`, `Align`, `Fill`, `Gap`,
+  `Value` and `Style`, `Bar`); `$null` segments are skipped.
+- **Named styles**: `Register-ConsoleStyle`, `Get-ConsoleStyle` and `Unregister-ConsoleStyle` give each value
+  its text and color (`-Map`), color numbers by thresholds (`-Thresholds`, `-Format`) and have a `-Default`.
+  Lines, key-value lists, table columns (`Style`) and charts (`Write-ConsoleChart -Style`) use them.
+- **Bars inside a line**: a `Bar` segment, colored by `Color` or by a style.
+- **`Write-ConsoleKeyValue`**: labels in a column and values wrapped under themselves (or cut with `-Cut`),
+  from a dictionary or a list that can repeat labels; `-LabelStyle` colors labels such as severities.
+- **`Set-ConsoleLayout`** and **`Get-ConsoleLayout`**: the widest line, the margin of the line components and
+  the width to use when the console width is unknown, for every component. **`Write-ConsoleGrid`** puts items
+  of the same width side by side, as many as fit.
+- **`Start-ConsoleCapture`** and **`Stop-ConsoleCapture`**: a copy of the output and the answers in a UTF-8
+  file, line by line, alongside any output handler. While capturing, prompts read typed answers and nothing
+  is rewritten in place.
+- **Titles and sections**: `Write-ConsoleTitle -Subtitle` and `-Align Left` (title at the margin, wrapped
+  subtitle, rule across the line); `Write-ConsoleHeader -Note` and `-Compact`; `Write-ConsoleSeparator
+  -Length 0` (the line width) and `-Indent`. **`Wait-ConsoleKey`** waits for Enter with a localized message.
+- **`Enable-ConsoleHostRedirect`** and **`Disable-ConsoleHostRedirect`**: `Write-Host` in the calling script or
+  module writes through the module (cleaned, `NO_COLOR`, handlers and captures).
+
+### Changed
+- Where the terminal supports virtual terminal sequences, `Write-ConsoleText`, `Write-ConsoleLine` and the
+  other line components write each line in one call, with the colors as escape sequences, instead of one
+  call per color. Elsewhere, and in output handlers, nothing changes.
+- `Get-ConsoleWidth` and wrapped text follow `Set-ConsoleLayout` when it is used; by default nothing changes.
+
 ## [2.7.0] - 2026-11-26
 
 ### Added

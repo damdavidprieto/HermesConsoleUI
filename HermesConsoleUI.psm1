@@ -17,6 +17,7 @@ $ModuleRoot = $PSScriptRoot
 . "$ModuleRoot\modules\visual_components.ps1"
 . "$ModuleRoot\modules\interactive_components.ps1"
 . "$ModuleRoot\modules\layout_components.ps1"
+. "$ModuleRoot\modules\line_components.ps1"
 
 Initialize-UIConfig -ConfigPath "$ModuleRoot\config\ui_config.json"
 Initialize-Localization -LocalePath "$ModuleRoot\config\locales"
@@ -51,5 +52,10 @@ Export-ModuleMember -Alias 'Get-AvailableThemes', 'Get-AvailableLocales' -Functi
     'Read-ConsoleMenu', 'Write-ConsoleStatusLine', 'Clear-ConsoleStatusLine',
 
     # Layout components
-    'New-ConsoleLayout', 'New-ConsoleRow', 'New-ConsoleColumn', 'Write-ConsoleLayout'
+    'New-ConsoleLayout', 'New-ConsoleRow', 'New-ConsoleColumn', 'Write-ConsoleLayout',
+
+    # Line components
+    'Set-ConsoleLayout', 'Get-ConsoleLayout', 'Register-ConsoleStyle', 'Unregister-ConsoleStyle', 'Get-ConsoleStyle',
+    'Write-ConsoleLine', 'Write-ConsoleKeyValue', 'Write-ConsoleGrid', 'Start-ConsoleCapture', 'Stop-ConsoleCapture',
+    'Wait-ConsoleKey', 'Enable-ConsoleHostRedirect', 'Disable-ConsoleHostRedirect'
 )
