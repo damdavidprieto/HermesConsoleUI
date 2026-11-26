@@ -434,7 +434,7 @@ function Assert-HermesSegmentList {
             ($script:HermesConsoleColorName.ContainsKey($segment) -or $script:HermesColorRoles -contains $segment -or $segment -match '^#[0-9A-Fa-f]{6}$')) {
             throw [System.ArgumentException]::new(("Segment {0} is the color '{1}' as text: the array segments were probably merged into one list. " +
                     "Write each array segment with a comma, ,@('text', '{1}'), or as a hashtable, @{{ Text = 'text'; Color = '{1}' }}. " +
-                    "To write a color name as text, use @{{ Text = '{1}' }}.") -f $i, $segment)
+                    "To write a color name as text, use @{{ Text = '{1}' }}.") -f ($i, $segment))
         }
         $previousPlain = $plain
     }
@@ -546,6 +546,9 @@ function Write-ConsoleLine {
                     the value of a full bar (100) and Empty the color of the rest.
         $null segments are skipped, so a segment can depend on a condition: $(if ($risk) { @{ ... } }).
         The text is written safely, as everywhere in the module, and is never read for color marks.
+        Array segments written one per line inside @( ) are merged by PowerShell into one flat list, so the
+        module refuses a color name found as text right after another text segment: write each array with a
+        comma in front, ,@('text', 'Red'), or as a hashtable, @{ Text = 'text'; Color = 'Red' }.
         Where the terminal supports virtual terminal sequences (PowerShell 7 in Windows Terminal, and most
         consoles), each line is written in one call, which is faster and keeps lines whole.
 
@@ -966,7 +969,7 @@ function Enable-ConsoleSimulation {
 
     .DESCRIPTION
         From now on, the prompts that read keys (Read-ConsoleSelection, Read-ConsoleMenu and the arrow-key lists)
-        take them from -Keys, and the prompts that read a line (Read-ConsoleInput, Read-ConsoleChoice,
+        take them from -KeyPresses (-Keys), and the prompts that read a line (Read-ConsoleInput, Read-ConsoleChoice,
         Read-ConsoleConfirmation, Read-ConsolePassword, Wait-ConsoleKey and the typed menus) take them from
         -Answers, in order. When the keys run out, Escape is read; when the answers run out, the input has
         ended, as with a redirected file: each prompt returns its default or fails, never waits.
@@ -975,8 +978,8 @@ function Enable-ConsoleSimulation {
         Disable-ConsoleSimulation ends it; Invoke-ConsoleSimulation runs a script block with it and ends it.
         Enabling it again replaces the keys and answers.
 
-    .PARAMETER Keys
-        Keys to read: [ConsoleKeyInfo], [char], [ConsoleKey], one-character strings ('2') or key names
+    .PARAMETER KeyPresses
+        Keys to read (also -Keys): [ConsoleKeyInfo], [char], [ConsoleKey], one-character strings ('2') or key names
         ('Enter', 'DownArrow', 'Escape', 'Backspace', 'Spacebar').
 
     .PARAMETER Answers
@@ -994,8 +997,9 @@ function Enable-ConsoleSimulation {
     #>
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
     param(
+        [Alias('Keys')]
         [AllowEmptyCollection()]
-        [object[]]$Keys = @(),
+        [object[]]$KeyPresses = @(),
 
         [AllowEmptyCollection()]
         [AllowNull()]
@@ -1006,7 +1010,7 @@ function Enable-ConsoleSimulation {
 
     if (-not $PSCmdlet.ShouldProcess('HermesConsoleUI input', 'Simulate keys and answers')) { return }
     $keyQueue = [System.Collections.Generic.Queue[System.ConsoleKeyInfo]]::new()
-    foreach ($k in @($Keys)) { if ($null -ne $k) { $keyQueue.Enqueue((ConvertTo-HermesKey -Key $k)) } }
+    foreach ($k in @($KeyPresses)) { if ($null -ne $k) { $keyQueue.Enqueue((ConvertTo-HermesKey -Key $k)) } }
     $answerQueue = [System.Collections.Generic.Queue[string]]::new()
     foreach ($a in @($Answers)) { $answerQueue.Enqueue([string]$a) }
     $script:HermesSimulation = @{ Keys = $keyQueue; Answers = $answerQueue; Interactive = -not $NonInteractive }
@@ -1042,8 +1046,8 @@ function Invoke-ConsoleSimulation {
     .PARAMETER ScriptBlock
         The code to run.
 
-    .PARAMETER Keys
-        Keys to read (see Enable-ConsoleSimulation).
+    .PARAMETER KeyPresses
+        Keys to read (see Enable-ConsoleSimulation); also -Keys.
 
     .PARAMETER Answers
         Lines to read, in order.
@@ -1061,8 +1065,9 @@ function Invoke-ConsoleSimulation {
         [Parameter(Mandatory = $true, Position = 0)]
         [scriptblock]$ScriptBlock,
 
+        [Alias('Keys')]
         [AllowEmptyCollection()]
-        [object[]]$Keys = @(),
+        [object[]]$KeyPresses = @(),
 
         [AllowEmptyCollection()]
         [AllowNull()]
@@ -1071,7 +1076,7 @@ function Invoke-ConsoleSimulation {
         [switch]$NonInteractive
     )
 
-    Enable-ConsoleSimulation -Keys $Keys -Answers $Answers -NonInteractive:$NonInteractive -Confirm:$false
+    Enable-ConsoleSimulation -KeyPresses $KeyPresses -Answers $Answers -NonInteractive:$NonInteractive -Confirm:$false
     try { & $ScriptBlock }
     finally { Disable-ConsoleSimulation -Confirm:$false }
 }

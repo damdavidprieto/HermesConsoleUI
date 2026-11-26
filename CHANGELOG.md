@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-11-27
+
+### Added
+- **Simulated console for tests**: `Enable-ConsoleSimulation`, `Disable-ConsoleSimulation` and `Invoke-ConsoleSimulation`
+  give the prompts the keys (`-KeyPresses`, also `-Keys`) and the lines (`-Answers`) they read, so a script's tests need no
+  internal variables. Keys run out into Escape and answers into an ended input, as with a redirected file.
+  `-NonInteractive` behaves as a console without keys.
+- **`Write-ConsoleText -Prefix` and `-PrefixColor`**: a fixed prefix in its own color before the text; with `-Wrap` the
+  following lines start under the text, after the prefix (or under a prefix of spaces).
+- **`Format-ConsoleText -KeepLineBreaks`** cuts a block of text line by line and keeps its line breaks; **`-MaxLines`**
+  keeps the first lines and ends with "…" when there were more.
+- **`Read-ConsoleInput -NoColon`** writes only a space after the prompt.
+
+### Changed
+- `Read-ConsoleInput` no longer adds a second colon: a prompt that ends in ":", "?" or ">" gets a space instead of
+  ": " ("Name:" shows "Name: ", not "Name:: "; "Ready?" shows "Ready? ", not "Ready?: "). Other prompts are unchanged.
+- `Write-ConsoleLine` refuses segments that PowerShell merged into one list: a color name written as plain text right after
+  another plain text segment fails with a message that shows the safe forms (a comma in front of each array, or hashtables).
+
+### Fixed
+- `Write-ConsoleKeyValue -LabelWidth` keeps the width asked for while the line has 10 columns left for the values. Before,
+  labels longer than half the line were cut with "…" even when a width was given.
+
 ## [2.8.0] - 2026-11-26
 
 ### Added
