@@ -1,4 +1,4 @@
-# HermesConsoleUI - private helper functions.
+﻿# HermesConsoleUI - private helper functions.
 #
 # Used by the public components: safe console output, true color, theme and locale lookups,
 # text centering, icons and the layout column merge. Nothing here is exported.
@@ -398,17 +398,14 @@ function Test-ClearScreenAllowed {
         True unless clearing the screen has been turned off for this session.
     .DESCRIPTION
         Set $env:HERMESCONSOLEUI_NOCLEAR to 1 (or true) to keep earlier output on screen,
-        for example while debugging. $Global:CassielDevMode is still honoured for
-        compatibility with Cassiel, which used it before this setting existed.
+        for example while debugging. Applications with their own debug switch set this variable
+        from it; the module reads no variable of the calling application.
     #>
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'Read-only compatibility with Cassiel, which sets this variable.')]
     [CmdletBinding()]
     [OutputType([bool])]
     param()
 
-    if ($env:HERMESCONSOLEUI_NOCLEAR -match '^(1|true|yes)$') { return $false }
-    if ($Global:CassielDevMode) { return $false }
-    return $true
+    return -not ($env:HERMESCONSOLEUI_NOCLEAR -match '^(1|true|yes)$')
 }
 
 function Get-CenteredText {

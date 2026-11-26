@@ -1,4 +1,4 @@
-# HermesConsoleUI - console UI components for PowerShell.
+﻿# HermesConsoleUI - console UI components for PowerShell.
 #
 # Loads the configuration and localization systems, then the components.
 # Requires Windows PowerShell 5.1 or PowerShell 7+.

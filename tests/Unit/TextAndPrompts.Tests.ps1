@@ -1,4 +1,4 @@
-# Text width, cutting and wrapping, exact colors, prompts in captures, keyed menus, filtering and
+﻿# Text width, cutting and wrapping, exact colors, prompts in captures, keyed menus, filtering and
 # status lines (2.7.0).
 
 BeforeAll {

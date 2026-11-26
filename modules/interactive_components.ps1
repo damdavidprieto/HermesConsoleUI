@@ -1,4 +1,4 @@
-# HermesConsoleUI - interactive components.
+﻿# HermesConsoleUI - interactive components.
 #
 # Menus, prompts, progress and notifications. Prompt texts come from the active locale
 # (see Set-UILocale) and colors from the active theme (see Set-ConsoleTheme).
@@ -1117,7 +1117,7 @@ function Read-ConsoleMenu {
         In the interactive list, typing filters the options instead of jumping to them.
 
     .EXAMPLE
-        $action = Read-ConsoleMenu -Title 'Cassiel' -Recommended 'a' -Default 'q' -Cancel 'q' -Items ([ordered]@{
+        $action = Read-ConsoleMenu -Title 'Tasks' -Recommended 'a' -Default 'q' -Cancel 'q' -Items ([ordered]@{
             a = 'Audit', 'Check every rule'
             r = 'Repair', 'Apply the pending rules', 'Yellow'
             q = 'Quit'

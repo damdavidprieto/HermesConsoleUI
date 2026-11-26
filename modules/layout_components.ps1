@@ -1,4 +1,4 @@
-# HermesConsoleUI - layout components.
+﻿# HermesConsoleUI - layout components.
 #
 # Side-by-side columns: build a layout with New-ConsoleLayout, New-ConsoleRow and
 # New-ConsoleColumn, then draw it with Write-ConsoleLayout.

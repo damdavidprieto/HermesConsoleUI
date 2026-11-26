@@ -1,4 +1,4 @@
-# Tables, lists, trees, charts, sparklines, boxes and panels.
+﻿# Tables, lists, trees, charts, sparklines, boxes and panels.
 # Run from the repository: .\examples\02-Data.ps1
 
 Import-Module (Join-Path $PSScriptRoot '..\HermesConsoleUI.psd1') -Force

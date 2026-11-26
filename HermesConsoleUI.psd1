@@ -1,4 +1,4 @@
-@{
+﻿@{
     RootModule           = 'HermesConsoleUI.psm1'
     ModuleVersion        = '2.9.0'
     CompatiblePSEditions = @('Desktop', 'Core')

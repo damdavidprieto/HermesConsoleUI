@@ -1,4 +1,4 @@
-BeforeDiscovery {
+﻿BeforeDiscovery {
     $script:repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
     # Every PowerShell source file that ships or runs, with non-ASCII content.
     $script:nonAsciiFiles = Get-ChildItem -Path $repoRoot -Recurse -Include '*.ps1', '*.psm1', '*.psd1' |

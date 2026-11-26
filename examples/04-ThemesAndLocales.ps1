@@ -1,4 +1,4 @@
-# Color themes and localized prompts.
+﻿# Color themes and localized prompts.
 # Components use the active theme unless you pass -Color; prompts follow the active locale.
 # Run from the repository: .\examples\04-ThemesAndLocales.ps1
 

@@ -1,4 +1,4 @@
-# Simulated keys and answers, prompts that end in ':' or '?', segments merged into one list, the label width of
+﻿# Simulated keys and answers, prompts that end in ':' or '?', segments merged into one list, the label width of
 # key-value lists, cut text with line breaks and the prefix of Write-ConsoleText (2.9.0).
 
 BeforeAll {

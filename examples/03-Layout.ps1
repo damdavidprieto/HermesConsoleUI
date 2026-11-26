@@ -1,4 +1,4 @@
-# Side-by-side columns with New-ConsoleLayout.
+﻿# Side-by-side columns with New-ConsoleLayout.
 # A script block column receives -Width and -ReturnLines and returns the lines to show.
 # Run from the repository: .\examples\03-Layout.ps1
 

@@ -1,4 +1,4 @@
-# An interactive menu with actions, confirmation and multiple choice.
+﻿# An interactive menu with actions, confirmation and multiple choice.
 # Run from the repository: .\examples\05-InteractiveMenu.ps1  (choose 0 to exit)
 
 Import-Module (Join-Path $PSScriptRoot '..\HermesConsoleUI.psd1') -Force
