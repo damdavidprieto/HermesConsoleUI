@@ -1,4 +1,7 @@
 BeforeAll {
+    # The tests check colors: NO_COLOR set on this computer would drop them (it is restored afterwards).
+    $script:savedNoColorAll = $env:NO_COLOR
+    $env:NO_COLOR = $null
     $manifestPath = Join-Path $PSScriptRoot '..\..\HermesConsoleUI.psd1'
     Get-Module HermesConsoleUI | Remove-Module -Force
     Import-Module $manifestPath -Force
@@ -24,6 +27,7 @@ BeforeAll {
 }
 
 AfterAll {
+    $env:NO_COLOR = $script:savedNoColorAll
     InModuleScope HermesConsoleUI {
         $script:HermesInteractiveOverride = $null
         $script:HermesReadKey = { [Console]::ReadKey($true) }

@@ -38,6 +38,7 @@ Export-ModuleMember -Alias 'Get-AvailableThemes', 'Get-AvailableLocales' -Functi
     'Write-ConsoleInfo', 'Write-ConsoleStatus', 'Write-ConsoleMetadata', 'Write-ConsoleSummary',
     'Write-ConsoleDiff', 'Write-ConsoleSeparator', 'Write-ConsoleBreadcrumb', 'Write-ConsoleText',
     'Register-ConsoleOutputHandler', 'Unregister-ConsoleOutputHandler',
+    'Measure-ConsoleText', 'Format-ConsoleText', 'Get-ConsoleWidth', 'Clear-ConsoleScreen',
 
     # Visual components
     'Write-ConsoleBox', 'Write-ConsoleChart', 'Write-ConsoleTree', 'Write-ConsoleTable',
@@ -47,6 +48,7 @@ Export-ModuleMember -Alias 'Get-AvailableThemes', 'Get-AvailableLocales' -Functi
     'Show-ConsoleMenu', 'Read-ConsoleChoice', 'Read-ConsoleMultiChoice', 'Read-ConsoleSelection', 'Invoke-ConsoleMenu',
     'Invoke-ConsoleSpinner', 'Write-ConsoleProgress', 'Show-ConsoleProgress', 'Read-ConsoleInput',
     'Read-ConsoleConfirmation', 'Read-ConsolePassword', 'Show-ConsoleNotification',
+    'Read-ConsoleMenu', 'Write-ConsoleStatusLine', 'Clear-ConsoleStatusLine',
 
     # Layout components
     'New-ConsoleLayout', 'New-ConsoleRow', 'New-ConsoleColumn', 'Write-ConsoleLayout'

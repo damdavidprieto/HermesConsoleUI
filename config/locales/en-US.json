@@ -3,7 +3,8 @@
         "ExitPrompt": "(0 to exit)",
         "SelectPrompt": "Select an option",
         "InvalidOption": "Invalid option. Try again.",
-        "PressEnter": "Press Enter to continue..."
+        "PressEnter": "Press Enter to continue...",
+        "Recommended": "← recommended"
     },
     "Confirmation": {
         "Prompt": "(Y/N)"
@@ -20,6 +21,13 @@
     },
     "Selection": {
         "Hint": "Up/Down move, Enter select, Esc cancel",
-        "MultiHint": "Up/Down move, Space mark, A all, Enter accept, Esc cancel"
+        "MultiHint": "Up/Down move, Space mark, A all, Enter accept, Esc cancel",
+        "FilterHint": "Type to filter, Up/Down move, Enter select, Esc clear or cancel",
+        "FilterMultiHint": "Type to filter, Space mark, Enter accept, Esc clear or cancel",
+        "NoMatch": "(no matches)",
+        "Cancelled": "(cancelled)"
+    },
+    "Choice": {
+        "Invalid": "\"{0}\" is not an option. Type one of: {1}"
     }
 }

@@ -57,16 +57,16 @@ interactive menu. Each example runs as part of the tests.
 
 | Area | Commands |
 |---|---|
-| Text | `Write-ConsoleText`, `Register-ConsoleOutputHandler`, `Unregister-ConsoleOutputHandler`, `Write-ConsoleTitle`, `Write-ConsoleHeader`, `Write-ConsoleSubtitle`, `Write-ConsoleStatus`, `Write-ConsoleInfo`, `Write-ConsoleError`, `Write-ConsoleMetadata`, `Write-ConsoleSummary`, `Write-ConsoleDiff`, `Write-ConsoleSeparator`, `Write-ConsoleBreadcrumb` |
+| Text | `Write-ConsoleText`, `Format-ConsoleText`, `Measure-ConsoleText`, `Get-ConsoleWidth`, `Clear-ConsoleScreen`, `Register-ConsoleOutputHandler`, `Unregister-ConsoleOutputHandler`, `Write-ConsoleTitle`, `Write-ConsoleHeader`, `Write-ConsoleSubtitle`, `Write-ConsoleStatus`, `Write-ConsoleInfo`, `Write-ConsoleError`, `Write-ConsoleMetadata`, `Write-ConsoleSummary`, `Write-ConsoleDiff`, `Write-ConsoleSeparator`, `Write-ConsoleBreadcrumb` |
 | Data | `Write-ConsoleTable`, `Show-ConsoleList`, `Write-ConsoleTree`, `Write-ConsoleChart`, `Write-ConsoleSparkline`, `Write-ConsoleBox`, `Write-ConsolePanel` |
-| Interaction | `Read-ConsoleSelection`, `Show-ConsoleMenu`, `Read-ConsoleChoice`, `Invoke-ConsoleMenu`, `Read-ConsoleMultiChoice`, `Read-ConsoleInput`, `Read-ConsoleConfirmation`, `Read-ConsolePassword`, `Invoke-ConsoleSpinner`, `Show-ConsoleProgress`, `Write-ConsoleProgress`, `Show-ConsoleNotification` |
+| Interaction | `Read-ConsoleSelection`, `Read-ConsoleMenu`, `Show-ConsoleMenu`, `Read-ConsoleChoice`, `Invoke-ConsoleMenu`, `Read-ConsoleMultiChoice`, `Read-ConsoleInput`, `Read-ConsoleConfirmation`, `Read-ConsolePassword`, `Invoke-ConsoleSpinner`, `Write-ConsoleStatusLine`, `Clear-ConsoleStatusLine`, `Show-ConsoleProgress`, `Write-ConsoleProgress`, `Show-ConsoleNotification` |
 | Layout | `New-ConsoleLayout`, `New-ConsoleRow`, `New-ConsoleColumn`, `Write-ConsoleLayout` |
 | Themes | `Set-ConsoleTheme`, `Get-ConsoleTheme`, `Get-AvailableTheme`, `Get-UIColor`, `Get-UIIcon`, `Get-UIConfig`, `Initialize-UIConfig` |
 | Localization | `Set-UILocale`, `Get-UILocale`, `Get-AvailableLocale`, `Get-LocalizedString`, `Initialize-Localization` |
 
 `Get-Command -Module HermesConsoleUI` lists them and `Get-Help <command> -Full` documents each one.
-Commands that return lines (`Show-ConsoleList`, `Write-ConsoleChart`, `Write-ConsoleBox`) accept
-`-ReturnLines`, so their output can go inside a panel or a layout column.
+Commands that return lines (`Show-ConsoleList`, `Write-ConsoleTree`, `Write-ConsoleTable`, `Write-ConsoleChart`,
+`Write-ConsoleBox`) accept `-ReturnLines`, so their output can go inside a panel or a layout column.
 
 ## Themes
 
@@ -77,7 +77,9 @@ Set-ConsoleTheme -ThemeName Custom -CustomColors @{ Primary = 'DarkCyan'; Succes
 ```
 
 Themes define eight color roles: Primary, Secondary, Success, Warning, Error, Info, Muted and
-Highlight. The built-in themes are in [`config/ui_config.json`](config/ui_config.json).
+Highlight. The built-in themes are in [`config/ui_config.json`](config/ui_config.json); a theme added
+there (or in your own file, loaded with `Initialize-UIConfig -ConfigPath`) can be activated by its name.
+A configuration file only needs what it changes, and a theme that leaves out roles takes them from Default.
 
 ## Localization
 
@@ -87,15 +89,33 @@ Set-UILocale -Locale es-ES     # menus and prompts in Spanish
 ```
 
 The locale strings are in [`config/locales/`](config/locales/). The locale starts as the system
-culture when a file exists for it, and English otherwise.
+culture when a file exists for it, then a file of the same language (`es-MX` uses `es-ES`), and English
+otherwise.
 
 ## Menus and the screen
 
 `Read-ConsoleSelection` draws the list in place and redraws it as you move, with Page Up, Page Down,
-Home and End for long lists (`-PageSize`). Without an interactive console it lists the options
-with numbers and reads the answer with `Read-ConsoleChoice` or `Read-ConsoleMultiChoice`.
+Home and End for long lists (`-PageSize`); with `-Filter`, typing narrows the list. Without an interactive
+console it lists the options with numbers and reads the answer with `Read-ConsoleChoice` or
+`Read-ConsoleMultiChoice`.
 
-`Show-ConsoleMenu` clears the screen before drawing. Use `-NoClear` for one menu, or set
+```powershell
+$action = Read-ConsoleMenu -Title 'Tasks' -Recommended a -Default q -Cancel q -Items ([ordered]@{
+    a = 'Audit', 'Check every rule'
+    r = 'Repair', 'Apply the pending rules', 'Yellow'
+    q = 'Quit'
+})
+```
+
+`Read-ConsoleMenu` shows keyed options with a note column and a recommended one, and returns the key:
+with the arrow keys in a console, by typing the key elsewhere. `Read-ConsoleChoice -Choices` reads a word
+or letter, such as `s` or `n`, with a default for Enter.
+
+`Write-ConsoleStatusLine` shows one line of progress that is rewritten in place, in the same process, and
+`Clear-ConsoleStatusLine` removes it; anything else the module writes removes it first.
+
+`Show-ConsoleMenu` and `Clear-ConsoleScreen` clear the screen, or write a blank line where that is not
+possible (redirected output, a capture). `Show-ConsoleMenu` clears the screen before drawing. Use `-NoClear` for one menu, or set
 `$env:HERMESCONSOLEUI_NOCLEAR = 1` to keep earlier output on screen in every menu, for example
 while debugging.
 
@@ -103,19 +123,24 @@ while debugging.
 
 `Register-ConsoleOutputHandler` passes a copy of everything the components write to a script block
 (the text, whether the line continues, and the color), for logs, transcripts or tests; with `-Quiet`
-nothing is shown on screen. `Unregister-ConsoleOutputHandler` removes it.
+nothing is shown on screen. The answers typed to the prompts are passed too (a password as asterisks), so a
+capture keeps each question with its answer. `Unregister-ConsoleOutputHandler` removes it.
 
 ## Tables
 
 `Write-ConsoleTable` sizes each column to its longest value (up to `MaxColumnWidth` in the theme
 configuration), narrows the widest ones when the table does not fit in the window, aligns numbers
-to the right and underlines the header. Give a column a `Width` or an `Align` to fix them.
+to the right and underlines the header. Give a column a `Width` or an `Align` to fix them, a `Map` to show
+words instead of values and `Colors` to color each cell by its value. Values that do not fit end with `…`.
+Widths are measured as the console shows them: East Asian characters and emoji take two columns.
 
 ## Colors
 
 `NO_COLOR` set to any value turns colors off in every component. `Write-ConsoleText` takes
 `{Color}` marks with any console color or theme role; `{/}` goes back to the default color and
-`{{` writes a literal brace.
+`{{` writes a literal brace; `-Wrap` breaks long text into lines that fit the console. Any color can also
+be `#RRGGBB`, in marks, `-Color` parameters and themes: exact where the terminal supports it, the nearest
+console color elsewhere. `Write-ConsoleChart -Thresholds` colors a bar by its percentage.
 
 ## Security
 

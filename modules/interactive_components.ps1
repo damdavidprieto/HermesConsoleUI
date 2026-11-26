@@ -82,7 +82,7 @@ function Show-ConsoleMenu {
     $OptionColor = Resolve-UIColor -Color $OptionColor -Role Muted
     $muted = Resolve-UIColor -Role Muted
 
-    if (-not $NoClear -and (Test-ClearScreenAllowed)) { Clear-Host }
+    if (-not $NoClear) { Clear-ConsoleScreen }
 
     $width = [Math]::Max(60, $Title.Length + 4)
     $border = '=' * $width
@@ -140,7 +140,9 @@ function Read-ConsoleChoice {
         Reads a menu choice and returns it as a number.
 
     .DESCRIPTION
-        Prompts until the user types a whole number from 1 to -MaxChoice, or 0 when
+        With -Choices, the user types one of those words or letters instead (case does not matter) and
+        the choice is returned as written in -Choices; an empty answer returns -DefaultValue.
+        Otherwise it prompts until the user types a whole number from 1 to -MaxChoice, or 0 when
         -AllowZero is true (the default), and returns it. Anything else, including numbers
         too large to read, shows a message and asks again. The default prompt and messages
         follow the active locale. With -MaxChoice 0 and -AllowZero $false there is nothing the
@@ -153,6 +155,12 @@ function Read-ConsoleChoice {
     .PARAMETER MaxChoice
         Highest valid choice, usually the value returned by Show-ConsoleMenu.
 
+    .PARAMETER Choices
+        Words or letters the user can type, such as 's', 'n' or 'audit', 'apply'. Returns the one typed.
+
+    .PARAMETER DefaultValue
+        With -Choices, the choice returned for an empty answer or when the input runs out. It must be one of -Choices.
+
     .PARAMETER Prompt
         Prompt text. Defaults to the locale's "Select an option".
 
@@ -162,6 +170,11 @@ function Read-ConsoleChoice {
     .PARAMETER DefaultChoice
         Choice returned for an empty answer, shown after the prompt. It must be a valid choice.
         Without it (or with -1, the default) an empty answer asks again.
+
+    .EXAMPLE
+        $answer = Read-ConsoleChoice -Choices 'apply', 'skip', 'quit' -DefaultValue 'skip' -Prompt 'What now'
+
+        Returns "apply", "skip" or "quit" as typed in any case, and "skip" for Enter.
 
     .EXAMPLE
         $choice = Read-ConsoleChoice -MaxChoice 3 -DefaultChoice 1
@@ -178,20 +191,31 @@ function Read-ConsoleChoice {
 
         Returns a number from 1 to 5; 0 is not accepted.
     #>
-    [CmdletBinding()]
-    [OutputType([int])]
+    [CmdletBinding(DefaultParameterSetName = 'Number')]
+    [OutputType([int], [string])]
     param(
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Number')]
         [ValidateRange(0, [int]::MaxValue)]
         [int]$MaxChoice,
 
+        [Parameter(Mandatory = $true, ParameterSetName = 'Word')]
+        [ValidateNotNullOrEmpty()]
+        [string[]]$Choices,
+
         [string]$Prompt,
 
+        [Parameter(ParameterSetName = 'Number')]
         [bool]$AllowZero = $true,
 
+        [Parameter(ParameterSetName = 'Number')]
         [ValidateRange(-1, [int]::MaxValue)]
-        [int]$DefaultChoice = -1
+        [int]$DefaultChoice = -1,
+
+        [Parameter(ParameterSetName = 'Word')]
+        [string]$DefaultValue
     )
+
+    if ($PSCmdlet.ParameterSetName -eq 'Word') { return (Read-ConsoleWordChoice -Choices $Choices -Prompt $Prompt -DefaultValue $DefaultValue) }
 
     if ($MaxChoice -lt 1 -and -not $AllowZero) {
         throw [System.ArgumentException]::new('There is no valid choice: -MaxChoice is 0 and -AllowZero is $false.', 'MaxChoice')
@@ -218,6 +242,7 @@ function Read-ConsoleChoice {
             if ($AllowZero) { return 0 }
             throw [System.InvalidOperationException]::new('The input ended before a valid choice was read.')
         }
+        Send-HermesAnswer "$raw"
         $val = "$raw".Trim()
         if ($val -eq '' -and $DefaultChoice -ge 0) { return $DefaultChoice }
 
@@ -230,6 +255,45 @@ function Read-ConsoleChoice {
 
         Write-HermesHost ('  [!] ' + $invalid) -ForegroundColor (Resolve-UIColor -Role Error)
         Write-HermesHost ''
+    }
+}
+
+function Read-ConsoleWordChoice {
+    <#
+    .SYNOPSIS
+        Read-ConsoleChoice -Choices: asks until the user types one of the words, and returns it as written in Choices.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Choices,
+        [string]$Prompt,
+        [string]$DefaultValue
+    )
+
+    $default = $null
+    if ($DefaultValue) {
+        $default = @($Choices | Where-Object { $_ -ieq $DefaultValue })[0]
+        if ($null -eq $default) { throw [System.ArgumentException]::new("-DefaultValue '$DefaultValue' is not one of -Choices.", 'DefaultValue') }
+    }
+    if (-not $Prompt) { $Prompt = Get-UIText -Key 'Menu.SelectPrompt' -Default 'Select an option' }
+    $invalid = Get-UIText -Key 'Choice.Invalid' -Default '"{0}" is not an option. Type one of: {1}'
+    $shown = "$Prompt ($($Choices -join '/'))" + $(if ($default) { " [$default]" } else { '' }) + ': '
+
+    while ($true) {
+        Write-HermesHost $shown -NoNewline -ForegroundColor (Resolve-UIColor -Role Primary)
+        $raw = Read-Host
+        if ($null -eq $raw -and (Test-HermesInputRedirected)) {
+            Write-HermesHost ''
+            if ($default) { return $default }
+            throw [System.InvalidOperationException]::new('The input ended before a valid choice was read.')
+        }
+        Send-HermesAnswer "$raw"
+        $val = "$raw".Trim()
+        if ($val -eq '' -and $default) { return $default }
+        foreach ($choice in $Choices) { if ($choice -ieq $val) { return $choice } }
+        $message = try { $invalid -f $val, ($Choices -join ', ') } catch { "$val ?" }
+        Write-HermesHost ('  [!] ' + $message) -ForegroundColor (Resolve-UIColor -Role Error)
     }
 }
 
@@ -307,6 +371,10 @@ function Read-ConsoleMultiChoice {
     .PARAMETER Prompt
         Prompt text. Defaults to the locale's "Select options (separated by comma)".
 
+    .PARAMETER ReturnIndex
+        Return the indexes (from 0) of the chosen options instead of the options, so options with the
+        same text can be told apart.
+
     .EXAMPLE
         $features = Read-ConsoleMultiChoice -Options "Logging", "Metrics", "Tracing"
 
@@ -319,7 +387,9 @@ function Read-ConsoleMultiChoice {
         [ValidateNotNullOrEmpty()]
         [object[]]$Options,
 
-        [string]$Prompt
+        [string]$Prompt,
+
+        [switch]$ReturnIndex
     )
 
     if (-not $Prompt) { $Prompt = Get-UIText -Key 'MultiChoice.Prompt' -Default 'Select options (separated by comma)' }
@@ -330,21 +400,22 @@ function Read-ConsoleMultiChoice {
     }
 
     $val = Read-Host '    > '
+    Send-HermesAnswer ('    > ' + [string]$val)
     if (-not $val) { return @() }
 
     # Only 1..Count is valid. "0" used to select the last option (index -1), and a very
     # long number threw. Each option is returned once, in the order the user typed it.
-    $results = @()
+    $results = [System.Collections.Generic.List[object]]::new()
     $seen = @{}
     foreach ($idx in $val.Split(',')) {
         $n = 0
         $token = $idx.Trim()
         if ($token -match '^\d+$' -and [int]::TryParse($token, [ref]$n) -and $n -ge 1 -and $n -le $Options.Count -and -not $seen.ContainsKey($n)) {
             $seen[$n] = $true
-            $results += $Options[$n - 1]
+            $results.Add($(if ($ReturnIndex) { $n - 1 } else { $Options[$n - 1] }))
         }
     }
-    return $results
+    return $results.ToArray()
 }
 
 function Invoke-ConsoleSpinner {
@@ -513,6 +584,9 @@ function Read-ConsoleInput {
         passwords use Read-ConsolePassword, which does not echo the input.
         -Required, -Pattern and -Validate check the answer: until it is valid, the error message
         is shown and the question is asked again. The default value is checked too.
+        When the input runs out (redirected from a file or pipe that has ended) it returns the default
+        value, or an empty string when that is valid, and otherwise throws: it never waits forever for
+        input that cannot arrive.
 
     .PARAMETER Prompt
         Prompt text. Defaults to the locale's input prompt, "[?]".
@@ -573,7 +647,10 @@ function Read-ConsoleInput {
 
     while ($true) {
         $answer = Read-Host -Prompt $Prompt
+        # $null: the input has ended (a redirected file or pipe). Asking again would loop forever.
+        $ended = $null -eq $answer -and (Test-HermesInputRedirected)
         if ($hasDefault -and [string]::IsNullOrEmpty($answer)) { $answer = $DefaultValue }
+        Send-HermesAnswer ("${Prompt}: " + [string]$answer)
 
         $valid = $true
         if ([string]::IsNullOrEmpty($answer)) { $valid = -not $Required }
@@ -584,7 +661,8 @@ function Read-ConsoleInput {
                 catch { $valid = $false }
             }
         }
-        if ($valid) { return $answer }
+        if ($valid) { return [string]$answer }
+        if ($ended) { throw [System.InvalidOperationException]::new('The input ended before a valid answer was read.') }
         Write-HermesHost ('  ' + $ErrorMessage) -ForegroundColor (Resolve-UIColor -Role Error)
     }
 }
@@ -629,9 +707,14 @@ function Read-ConsoleConfirmation {
         $hint = if ($Default) { "($($matches[1].ToUpperInvariant())/$($matches[2].ToLowerInvariant()))" } else { "($($matches[1].ToLowerInvariant())/$($matches[2].ToUpperInvariant()))" }
     }
 
-    $response = "$(Read-Host "$Message $hint")".Trim().ToLowerInvariant()
-    if ($response.Length -eq 0) { return ($hasDefault -and $Default) }
-    return ($yes -contains $response.Substring(0, 1))
+    $raw = "$(Read-Host "$Message $hint")".Trim()
+    $response = $raw.ToLowerInvariant()
+    $result = if ($response.Length -eq 0) { $hasDefault -and $Default } else { $yes -contains $response.Substring(0, 1) }
+    # A capture keeps the question with its answer: what was typed, or the default letter for Enter.
+    $letters = if ($hint -match '^\(\s*(\w)\s*/\s*(\w)\s*\)$') { $matches[1].ToLowerInvariant(), $matches[2].ToLowerInvariant() } else { 'y', 'n' }
+    $shownAnswer = if ($raw) { $raw } elseif ($result) { $letters[0] } else { $letters[1] }
+    Send-HermesAnswer "$Message ${hint}: $shownAnswer"
+    return [bool]$result
 }
 
 function Read-ConsolePassword {
@@ -641,7 +724,8 @@ function Read-ConsolePassword {
 
     .DESCRIPTION
         Uses Read-Host -AsSecureString, so the characters are masked while typing and the
-        value is never returned as plain text.
+        value is never returned as plain text. An output handler (Register-ConsoleOutputHandler) only
+        receives the prompt and asterisks.
 
     .PARAMETER Prompt
         Prompt text. Defaults to "Password".
@@ -657,7 +741,10 @@ function Read-ConsolePassword {
         [string]$Prompt = 'Password'
     )
 
-    return (Read-Host -Prompt $Prompt -AsSecureString)
+    $secure = Read-Host -Prompt $Prompt -AsSecureString
+    # A capture shows that something was typed, never what or how long.
+    Send-HermesAnswer ("${Prompt}: " + $(if ($secure -and $secure.Length) { '********' } else { '' }))
+    return $secure
 }
 
 function Show-ConsoleNotification {
@@ -703,7 +790,9 @@ function Read-ConsoleSelection {
         cancels. With -Multiple, Space marks or unmarks the highlighted option, A marks or unmarks
         all of them, and Enter returns the marked ones (or the highlighted one if none is marked).
         Long lists scroll in pages of -PageSize lines, with a counter of the position. Typing a letter or
-        digit jumps to the next option that starts with it (A marks all only with -Multiple).
+        digit jumps to the next option that starts with it (A marks all only with -Multiple). With -Filter,
+        typing narrows the list to the options that contain the text instead (Backspace deletes, the first
+        Escape clears the filter and the second cancels).
         Returns the chosen option, or with -ReturnIndex its index (from 0). Cancelling returns
         $null, or an empty array with -Multiple.
         Without an interactive console (output or input redirected, the ISE, a remote session or a
@@ -731,10 +820,18 @@ function Read-ConsoleSelection {
     .PARAMETER ReturnIndex
         Return the index of the chosen option (or options) instead of the option itself.
 
+    .PARAMETER Filter
+        Typing filters the options instead of jumping to the next one that starts with the letter. For long lists.
+
     .EXAMPLE
         $target = Read-ConsoleSelection -Title 'Deploy to' -Options 'Development', 'Staging', 'Production'
 
         Returns the environment chosen with the arrow keys and Enter, or $null on Escape.
+
+    .EXAMPLE
+        $rule = Read-ConsoleSelection -Options $rules -DisplayProperty Name -Filter -PageSize 15
+
+        Shows the rules 15 at a time; typing "firewall" leaves only the rules whose name contains it.
 
     .EXAMPLE
         $services = Read-ConsoleSelection -Options (Get-Service | Select-Object -First 30) -DisplayProperty DisplayName -Multiple
@@ -760,7 +857,9 @@ function Read-ConsoleSelection {
 
         [string]$DisplayProperty,
 
-        [switch]$ReturnIndex
+        [switch]$ReturnIndex,
+
+        [switch]$Filter
     )
 
     $labels = @(foreach ($option in $Options) {
@@ -775,8 +874,8 @@ function Read-ConsoleSelection {
 
     $interactive = Test-InteractiveConsole
     if (-not $interactive -and $Multiple) {
-        $picked = @(Read-ConsoleMultiChoice -Options $labels)
-        $final = @(foreach ($label in $picked) { [array]::IndexOf($labels, $label) })
+        # By index: two options with the same text are still two options.
+        $final = @(Read-ConsoleMultiChoice -Options $labels -ReturnIndex)
     }
     elseif (-not $interactive) {
         for ($i = 0; $i -lt $count; $i++) {
@@ -787,7 +886,12 @@ function Read-ConsoleSelection {
         if ($choice -gt 0) { $final = @($choice - 1) }
     }
     else {
-        $final = Read-ConsoleSelectionKey -Labels $labels -Multiple:$Multiple -Default $Default -PageSize $PageSize
+        # The list is redrawn at every key: an output handler gets the answer once, not every redraw.
+        $script:HermesHandlerPaused = $true
+        try { $final = Read-ConsoleSelectionKey -Labels $labels -Multiple:$Multiple -Default $Default -PageSize $PageSize -Filter:$Filter }
+        finally { $script:HermesHandlerPaused = $false }
+        $answer = if ($null -eq $final) { Get-UIText -Key 'Selection.Cancelled' -Default '(cancelled)' } else { (@($final) | ForEach-Object { $labels[$_] }) -join ', ' }
+        Send-HermesAnswer "  > $answer"
     }
 
     $chosen = @(foreach ($i in @($final)) { if ($null -ne $i) { if ($ReturnIndex) { $i } else { $Options[$i] } } })
@@ -801,31 +905,38 @@ function Read-ConsoleSelectionKey {
     .SYNOPSIS
         The interactive part of Read-ConsoleSelection: draws the list, reads keys and returns the
         chosen indexes, or $null when the user cancels.
+    .DESCRIPTION
+        With -Filter, typed characters narrow the list to the labels that contain them. ItemColors gives a
+        color to each option when it is neither highlighted nor marked.
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'ItemColors', Justification = 'Used by the render script block.')]
     [CmdletBinding()]
     [OutputType([int[]], [object[]])]
     param(
         [Parameter(Mandatory = $true)][string[]]$Labels,
         [switch]$Multiple,
         [int]$Default = 0,
-        [int]$PageSize = 10
+        [int]$PageSize = 10,
+        [switch]$Filter,
+        [string[]]$ItemColors
     )
 
     $count = $Labels.Count
-
+    $all = [int[]](0..($count - 1))
+    # Index is a position in Visible, the options that pass the filter (all of them without one).
     $state = @{
-        Index  = [Math]::Min($Default, $count - 1)
-        Top    = 0
-        Marked = [System.Collections.Generic.SortedSet[int]]::new()
+        Index   = [Math]::Max(0, [Math]::Min($Default, $count - 1))
+        Top     = 0
+        Marked  = [System.Collections.Generic.SortedSet[int]]::new()
+        Text    = ''
+        Visible = $all
     }
     $pageSize = [Math]::Min($PageSize, $count)
-    $state.Index = [Math]::Max(0, $state.Index)
-    if ($Multiple) {
-        $hint = Get-UIText -Key 'Selection.MultiHint' -Default 'Up/Down move, Space mark, A all, Enter accept, Esc cancel'
-    }
-    else {
-        $hint = Get-UIText -Key 'Selection.Hint' -Default 'Up/Down move, Enter select, Esc cancel'
-    }
+    $hint = if ($Filter -and $Multiple) { Get-UIText -Key 'Selection.FilterMultiHint' -Default 'Type to filter, Space mark, Enter accept, Esc clear or cancel' }
+    elseif ($Filter) { Get-UIText -Key 'Selection.FilterHint' -Default 'Type to filter, Up/Down move, Enter select, Esc clear or cancel' }
+    elseif ($Multiple) { Get-UIText -Key 'Selection.MultiHint' -Default 'Up/Down move, Space mark, A all, Enter accept, Esc cancel' }
+    else { Get-UIText -Key 'Selection.Hint' -Default 'Up/Down move, Enter select, Esc cancel' }
+    $noMatch = Get-UIText -Key 'Selection.NoMatch' -Default '(no matches)'
     $width = Get-ConsoleWidth
     $colors = @{
         Current = Resolve-UIColor -Role Primary
@@ -836,23 +947,38 @@ function Read-ConsoleSelectionKey {
     $fit = {
         param([string]$Line)
         if ($width -le 1) { return $Line }
-        if ($Line.Length -ge $width) { return $Line.Substring(0, $width - 1) }
-        return $Line.PadRight($width - 1)
+        return (Format-ConsoleText -Text $Line -Width ($width - 1) -Align Left)
+    }
+    $applyFilter = {
+        $state.Visible = if ($state.Text) { [int[]]@(foreach ($i in $all) { if ($Labels[$i].IndexOf($state.Text, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $i } }) } else { $all }
+        $state.Index = 0
+        $state.Top = 0
     }
 
     $render = {
+        $shown = $state.Visible.Count
         if ($state.Index -lt $state.Top) { $state.Top = $state.Index }
         if ($state.Index -ge $state.Top + $pageSize) { $state.Top = $state.Index - $pageSize + 1 }
         for ($row = 0; $row -lt $pageSize; $row++) {
-            $i = $state.Top + $row
-            $pointer = if ($i -eq $state.Index) { '> ' } else { '  ' }
+            $position = $state.Top + $row
+            # Always the same number of lines, so the next redraw covers this one.
+            if ($position -ge $shown) {
+                Write-HermesHost (& $fit $(if ($row -eq 0) { "  $noMatch" } else { '' })) -ForegroundColor $colors.Muted
+                continue
+            }
+            $i = $state.Visible[$position]
+            $pointer = if ($position -eq $state.Index) { '> ' } else { '  ' }
             $box = ''
             if ($Multiple) { $box = if ($state.Marked.Contains($i)) { '[x] ' } else { '[ ] ' } }
-            $color = if ($i -eq $state.Index) { $colors.Current } elseif ($state.Marked.Contains($i)) { $colors.Marked } else { $colors.Other }
+            $color = if ($position -eq $state.Index) { $colors.Current }
+            elseif ($state.Marked.Contains($i)) { $colors.Marked }
+            elseif ($ItemColors -and $i -lt $ItemColors.Count -and $ItemColors[$i]) { $ItemColors[$i] }
+            else { $colors.Other }
             Write-HermesHost (& $fit "  $pointer$box$($Labels[$i])") -ForegroundColor $color
         }
         $footer = "  $hint"
-        if ($count -gt $pageSize) { $footer += "  ($($state.Index + 1)/$count)" }
+        if ($state.Text) { $footer += "  [$($state.Text)]" }
+        if ($shown -gt $pageSize) { $footer += "  ($($state.Index + 1)/$shown)" }
         Write-HermesHost (& $fit $footer) -ForegroundColor $colors.Muted
     }
 
@@ -877,29 +1003,48 @@ function Read-ConsoleSelectionKey {
         while ($true) {
             $key = & $script:HermesReadKey
             $redraw = $true
-            switch ([string]$key.Key) {
-                'UpArrow' { $state.Index = ($state.Index - 1 + $count) % $count }
-                'DownArrow' { $state.Index = ($state.Index + 1) % $count }
-                'PageUp' { $state.Index = [Math]::Max(0, $state.Index - $pageSize) }
-                'PageDown' { $state.Index = [Math]::Min($count - 1, $state.Index + $pageSize) }
-                'Home' { $state.Index = 0 }
-                'End' { $state.Index = $count - 1 }
-                'Spacebar' {
-                    if ($Multiple) { if (-not $state.Marked.Remove($state.Index)) { $null = $state.Marked.Add($state.Index) } }
-                }
-                'A' {
-                    if ($Multiple) {
-                        if ($state.Marked.Count -eq $count) { $state.Marked.Clear() }
-                        else { for ($i = 0; $i -lt $count; $i++) { $null = $state.Marked.Add($i) } }
+            $shown = $state.Visible.Count
+            $typed = [string]$key.KeyChar
+            if ($Filter -and $typed -match '^[^\p{C}\s]$') {
+                $state.Text += $typed
+                & $applyFilter
+            }
+            else {
+                switch ([string]$key.Key) {
+                    'UpArrow' { if ($shown) { $state.Index = ($state.Index - 1 + $shown) % $shown } }
+                    'DownArrow' { if ($shown) { $state.Index = ($state.Index + 1) % $shown } }
+                    'PageUp' { $state.Index = [Math]::Max(0, $state.Index - $pageSize) }
+                    'PageDown' { $state.Index = [Math]::Max(0, [Math]::Min($shown - 1, $state.Index + $pageSize)) }
+                    'Home' { $state.Index = 0 }
+                    'End' { $state.Index = [Math]::Max(0, $shown - 1) }
+                    'Backspace' {
+                        if ($Filter -and $state.Text) { $state.Text = $state.Text.Substring(0, $state.Text.Length - 1); & $applyFilter }
+                        else { $redraw = $false }
                     }
-                    else { $redraw = & $jump ([string]$key.KeyChar) }
+                    'Spacebar' {
+                        if ($Multiple -and $shown) {
+                            $i = $state.Visible[$state.Index]
+                            if (-not $state.Marked.Remove($i)) { $null = $state.Marked.Add($i) }
+                        }
+                    }
+                    'A' {
+                        if ($Multiple) {
+                            if ($state.Marked.Count -eq $count) { $state.Marked.Clear() }
+                            else { for ($i = 0; $i -lt $count; $i++) { $null = $state.Marked.Add($i) } }
+                        }
+                        else { $redraw = & $jump $typed }
+                    }
+                    'Enter' {
+                        if ($Multiple -and $state.Marked.Count) { return , ([int[]]@($state.Marked)) }
+                        if ($shown) { return , ([int[]]@($state.Visible[$state.Index])) }
+                        $redraw = $false
+                    }
+                    'Escape' {
+                        if ($Filter -and $state.Text) { $state.Text = ''; & $applyFilter }
+                        else { return $null }
+                    }
+                    default { $redraw = $(if ($Filter) { $false } else { & $jump $typed }) }
                 }
-                'Enter' {
-                    if ($Multiple -and $state.Marked.Count) { return , ([int[]]@($state.Marked)) }
-                    return , ([int[]]@($state.Index))
-                }
-                'Escape' { return $null }
-                default { $redraw = & $jump ([string]$key.KeyChar) }
             }
             if ($redraw) {
                 # Redraw over the previous list: it always has the same number of lines.
@@ -912,4 +1057,221 @@ function Read-ConsoleSelectionKey {
     finally {
         $null = Set-ConsoleCursorVisible -Visible $cursorWasVisible
     }
+}
+
+function Read-ConsoleMenu {
+    <#
+    .SYNOPSIS
+        Shows a menu of keyed options, with notes and a recommended one, and returns the key chosen.
+
+    .DESCRIPTION
+        Each item has a key (what the user types, such as "1", "a" or "audit"), a text, and optionally a note
+        shown aligned in a second column and a color. In an interactive console the options are chosen with
+        the arrow keys and Enter (typing a key's first letter jumps to it, or filters with -Filter); elsewhere
+        (redirected input, a capture, a CI log) they are listed and the user types the key, as with
+        Read-ConsoleChoice -Choices. -Recommended marks one option. Enter on an empty answer, or input that runs
+        out, returns -Default. Escape returns -Cancel, or $null when -Cancel is not given.
+
+    .PARAMETER Items
+        Ordered dictionary from key to the item: a string (its text), an array (text, note, color) or a
+        hashtable with Label, Note and Color.
+
+    .PARAMETER Title
+        Text shown above the options.
+
+    .PARAMETER Default
+        Key highlighted at the start and returned for an empty answer. Defaults to the first key.
+
+    .PARAMETER Recommended
+        Key of the option to mark as recommended.
+
+    .PARAMETER Cancel
+        Key returned when the user presses Escape.
+
+    .PARAMETER Prompt
+        Prompt text when the key is typed. Defaults to the locale's "Select an option".
+
+    .PARAMETER PageSize
+        Options shown at a time in the interactive list. Defaults to 20.
+
+    .PARAMETER Filter
+        In the interactive list, typing filters the options instead of jumping to them.
+
+    .EXAMPLE
+        $action = Read-ConsoleMenu -Title 'Cassiel' -Recommended 'a' -Default 'q' -Cancel 'q' -Items ([ordered]@{
+            a = 'Audit', 'Check every rule'
+            r = 'Repair', 'Apply the pending rules', 'Yellow'
+            q = 'Quit'
+        })
+
+        Returns "a", "r" or "q".
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNull()]
+        [System.Collections.IDictionary]$Items,
+
+        [string]$Title,
+
+        [string]$Default,
+
+        [string]$Recommended,
+
+        [string]$Cancel,
+
+        [string]$Prompt,
+
+        [ValidateRange(3, 100)]
+        [int]$PageSize = 20,
+
+        [switch]$Filter
+    )
+
+    if ($Items.Count -eq 0) { throw [System.ArgumentException]::new('-Items has no options.', 'Items') }
+    $entries = @(foreach ($key in $Items.Keys) {
+            $value = $Items[$key]
+            $label = $null; $note = $null; $color = $null
+            if ($value -is [System.Collections.IDictionary]) { $label = $value['Label']; $note = $value['Note']; $color = $value['Color'] }
+            elseif ($null -eq $value -or $value -is [string]) { $label = $value }
+            elseif ($value -is [System.Collections.IList]) { $parts = @($value); $label = $parts[0]; if ($parts.Count -gt 1) { $note = $parts[1] }; if ($parts.Count -gt 2) { $color = $parts[2] } }
+            elseif ($value.PSObject.Properties['Label']) { $label = $value.Label; $note = $value.Note; $color = $value.Color }
+            else { $label = [string]$value }
+            [pscustomobject]@{ Key = [string]$key; Label = [string]$label; Note = [string]$note; Color = [string]$color }
+        })
+    $keys = @($entries.Key)
+    $defaultKey = @($keys | Where-Object { $_ -ieq $Default })[0]
+    if ($null -eq $defaultKey) { $defaultKey = $keys[0] }
+    $marker = Get-UIText -Key 'Menu.Recommended' -Default ([string][char]0x2190 + ' recommended')
+
+    # Key and text, then the notes in a column of their own.
+    $keyWidth = ($keys | ForEach-Object { Measure-ConsoleText -Text $_ } | Measure-Object -Maximum).Maximum
+    $heads = @($entries | ForEach-Object { $_.Key.PadRight($keyWidth) + '  ' + $_.Label })
+    $headWidth = [Math]::Min(46, ($heads | ForEach-Object { Measure-ConsoleText -Text $_ } | Measure-Object -Maximum).Maximum)
+
+    if ($Title) { Write-HermesHost ('  ' + $Title) -ForegroundColor (Resolve-UIColor -Role Primary) }
+    $primary = Resolve-UIColor -Role Primary
+
+    if (Test-InteractiveConsole) {
+        $lines = for ($n = 0; $n -lt $entries.Count; $n++) {
+            $line = $heads[$n]
+            if ($entries[$n].Note) { $line = (Format-ConsoleText -Text $line -Width $headWidth -Align Left) + '  ' + $entries[$n].Note }
+            if ($entries[$n].Key -eq $Recommended) { $line += "  $marker" }
+            $line
+        }
+        $itemColors = @(foreach ($entry in $entries) { if ($entry.Key -eq $Recommended) { $primary } elseif ($entry.Color) { $entry.Color } else { '' } })
+        $script:HermesHandlerPaused = $true
+        try { $picked = Read-ConsoleSelectionKey -Labels @($lines) -Default ([array]::IndexOf($keys, $defaultKey)) -PageSize ([Math]::Min($PageSize, $entries.Count)) -Filter:$Filter -ItemColors $itemColors }
+        finally { $script:HermesHandlerPaused = $false }
+        if ($null -eq $picked) {
+            Send-HermesAnswer ('  > ' + (Get-UIText -Key 'Selection.Cancelled' -Default '(cancelled)'))
+            if ($PSBoundParameters.ContainsKey('Cancel')) { return $Cancel }
+            return $null
+        }
+        $chosen = $entries[$picked[0]]
+        Send-HermesAnswer "  > $($chosen.Key)  $($chosen.Label)"
+        return $chosen.Key
+    }
+
+    $muted = Resolve-UIColor -Role Muted
+    $highlight = Resolve-UIColor -Role Highlight
+    foreach ($entry in $entries) {
+        $isRecommended = $entry.Key -eq $Recommended
+        Write-HermesHost ('   ' + $entry.Key.PadRight($keyWidth) + '  ') -NoNewline -ForegroundColor $(if ($isRecommended) { $primary } else { $highlight })
+        $labelColor = if ($isRecommended) { $primary } elseif ($entry.Color) { $entry.Color } else { $highlight }
+        $labelText = if ($entry.Note) { Format-ConsoleText -Text $entry.Label -Width ($headWidth - $keyWidth - 2) -Align Left } else { $entry.Label }
+        Write-HermesHost $labelText -NoNewline -ForegroundColor $labelColor
+        if ($entry.Note) { Write-HermesHost ('  ' + $entry.Note) -NoNewline -ForegroundColor $muted }
+        if ($isRecommended) { Write-HermesHost ('  ' + $marker) -NoNewline -ForegroundColor $primary }
+        Write-HermesHost ''
+    }
+    $choice = @{ Choices = $keys; DefaultValue = $defaultKey }
+    if ($Prompt) { $choice.Prompt = $Prompt }
+    return (Read-ConsoleChoice @choice)
+}
+
+function Write-ConsoleStatusLine {
+    <#
+    .SYNOPSIS
+        Shows a line of progress that is rewritten in place, such as "  42 %  Checking the firewall".
+
+    .DESCRIPTION
+        Writes the text (with the percentage before it when -Percent is given) at the start of the current
+        line and leaves the cursor there, so the next call replaces it. Anything else the module writes
+        clears it first, and Clear-ConsoleStatusLine removes it. It runs in the same process (unlike
+        Invoke-ConsoleSpinner), so it can report the progress of your own loop. The line is cut to the
+        console width. Nothing is written when the output is redirected or only goes to an output handler
+        (Register-ConsoleOutputHandler -Quiet), and it is never passed to the handler: it is temporary.
+
+    .PARAMETER Text
+        What is being done.
+
+    .PARAMETER Percent
+        Percentage complete, from 0 to 100, shown before the text. -1 (the default) omits it.
+
+    .PARAMETER Color
+        Console color of the line. Defaults to the theme's Muted color.
+
+    .EXAMPLE
+        for ($i = 0; $i -lt $rules.Count; $i++) {
+            Write-ConsoleStatusLine -Text $rules[$i].Name -Percent ([Math]::Floor(100 * $i / $rules.Count))
+            Test-Rule $rules[$i]
+        }
+        Clear-ConsoleStatusLine
+
+        Shows which rule is being checked, on one line that changes, and removes it at the end.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification = 'The line starts with a carriage return on purpose, which Write-HermesHost would remove.')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [AllowEmptyString()]
+        [string]$Text,
+
+        [ValidateRange(-1, 100)]
+        [int]$Percent = -1,
+
+        [string]$Color
+    )
+
+    if (-not (Test-HermesLiveOutput)) { return }
+    $width = Get-ConsoleWidth -Default 80
+    $line = '  '
+    if ($Percent -ge 0) { $line += ('{0,3} %  ' -f $Percent) }
+    # Format-ConsoleText removes control characters from the text; the carriage return is added after.
+    $line = Format-ConsoleText -Text ($line + $Text) -Width ([Math]::Max(1, $width - 1)) -Align Left
+    $parameters = @{ Object = "`r$line"; NoNewline = $true }
+    if ([string]::IsNullOrEmpty($env:NO_COLOR)) {
+        $resolved = Resolve-UIColor -Color $Color -Role Muted
+        $parameters.ForegroundColor = if ($resolved -match '^#[0-9A-Fa-f]{6}$') { ConvertTo-NearestConsoleColor -Hex $resolved } else { $resolved }
+    }
+    Write-Host @parameters
+    $script:HermesStatusLineActive = $true
+}
+
+function Clear-ConsoleStatusLine {
+    <#
+    .SYNOPSIS
+        Removes the line shown by Write-ConsoleStatusLine.
+
+    .DESCRIPTION
+        Blanks the status line and puts the cursor back at the start of it, so the next output starts on a
+        clean line. Does nothing when no status line is shown. The module also does this by itself before
+        it writes anything else.
+
+    .EXAMPLE
+        Clear-ConsoleStatusLine
+
+        Removes the progress line after a loop.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification = 'Rewrites the line with a carriage return, which Write-HermesHost would remove.')]
+    [CmdletBinding()]
+    param()
+
+    if (-not $script:HermesStatusLineActive) { return }
+    $script:HermesStatusLineActive = $false
+    if (-not (Test-HermesLiveOutput)) { return }
+    $width = Get-ConsoleWidth -Default 80
+    Write-Host ("`r" + (' ' * [Math]::Max(1, $width - 1)) + "`r") -NoNewline
 }

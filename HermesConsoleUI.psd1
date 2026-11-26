@@ -1,6 +1,6 @@
 @{
     RootModule           = 'HermesConsoleUI.psm1'
-    ModuleVersion        = '2.5.0'
+    ModuleVersion        = '2.7.0'
     CompatiblePSEditions = @('Desktop', 'Core')
     GUID                 = 'a7f3e8d2-4c91-4b5a-9e7f-2d8c3a1b6e4f'
     Author               = 'David Prieto'
@@ -40,6 +40,10 @@
         'Write-ConsoleText'
         'Register-ConsoleOutputHandler'
         'Unregister-ConsoleOutputHandler'
+        'Measure-ConsoleText'
+        'Format-ConsoleText'
+        'Get-ConsoleWidth'
+        'Clear-ConsoleScreen'
 
         # Visual components
         'Write-ConsoleBox'
@@ -63,6 +67,9 @@
         'Read-ConsoleConfirmation'
         'Read-ConsolePassword'
         'Show-ConsoleNotification'
+        'Read-ConsoleMenu'
+        'Write-ConsoleStatusLine'
+        'Clear-ConsoleStatusLine'
 
         # Layout components
         'New-ConsoleLayout'

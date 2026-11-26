@@ -5,11 +5,12 @@
 
 # Module-level variables
 $script:UIConfig = $null
+
+# Built-in settings. A configuration file only needs the settings it changes: it is merged over these, so a
+# file without a theme, or a theme without some roles, still works. Every setting here is read by the module.
 $script:DefaultConfig = @{
     UILibrary = @{
-        Version = '1.0.0'
         ActiveTheme = 'Default'
-        DefaultLocale = 'en-US'
         ColorScheme = @{
             Default = @{
                 Primary = 'Cyan'
@@ -23,6 +24,7 @@ $script:DefaultConfig = @{
             }
         }
         Components = @{
+            # Returned by Get-UIIcon.
             Status = @{
                 Icons = @{
                     Success = '[+]'
@@ -31,45 +33,35 @@ $script:DefaultConfig = @{
                     Info = '[*]'
                 }
             }
-            Title = @{
-                DefaultColor = 'Cyan'
-                MinWidth = 60
-            }
-            Header = @{
-                DefaultColor = 'Yellow'
-                Prefix = '>>> '
-            }
-            Box = @{
-                DefaultColor = 'Cyan'
-                BorderStyle = 'ASCII'
-            }
-            Chart = @{
-                DefaultColor = 'Green'
-                DefaultWidth = 20
-                FilledChar = '█'
-                EmptyChar = '░'
-            }
-            Tree = @{
-                UseUnicode = $true
-            }
+            # Widest a table column grows on its own (Write-ConsoleTable).
             Table = @{
-                DefaultColumnWidth = 20
                 MaxColumnWidth = 80
-                HeaderColor = 'Yellow'
-                SeparatorColor = 'DarkGray'
-            }
-            Menu = @{
-                DefaultColor = 'Cyan'
-                OptionColor = 'Gray'
-                Width = 60
-            }
-            Progress = @{
-                DefaultColor = 'Cyan'
-                CompleteColor = 'Green'
-                Width = 30
             }
         }
     }
+}
+
+function Merge-UIConfigTable {
+    <#
+    .SYNOPSIS
+        Copies Overlay over Base, recursively: nested hashtables are merged, other values replace.
+    .DESCRIPTION
+        Returns a new hashtable; neither argument is changed.
+    #>
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param([hashtable]$Base, [hashtable]$Overlay)
+
+    $result = @{}
+    if ($Base) { foreach ($key in $Base.Keys) { $result[$key] = if ($Base[$key] -is [hashtable]) { Merge-UIConfigTable -Base $Base[$key] } else { $Base[$key] } } }
+    if ($Overlay) {
+        foreach ($key in $Overlay.Keys) {
+            $value = $Overlay[$key]
+            if ($value -is [hashtable]) { $result[$key] = Merge-UIConfigTable -Base ($result[$key] -as [hashtable]) -Overlay $value }
+            else { $result[$key] = $value }
+        }
+    }
+    return $result
 }
 
 function Initialize-UIConfig {
@@ -78,7 +70,8 @@ function Initialize-UIConfig {
         Initializes the UI configuration system.
 
     .DESCRIPTION
-        Loads configuration from JSON file. Falls back to default configuration if file not found.
+        Loads configuration from JSON file and merges it over the built-in settings, so the file only
+        needs what it changes. Falls back to the built-in settings if the file is not found or cannot be read.
 
     .PARAMETER ConfigPath
         Optional path to the configuration file. Defaults to config/ui_config.json.
@@ -105,17 +98,20 @@ function Initialize-UIConfig {
             # -Encoding UTF8: Windows PowerShell 5.1 reads files without a BOM as ANSI otherwise.
             $configContent = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
             # Convert PSCustomObject to hashtable for easier manipulation
-            $script:UIConfig = ConvertTo-Hashtable -InputObject $configContent
+            $loaded = ConvertTo-Hashtable -InputObject $configContent
+            if ($loaded -isnot [hashtable]) { throw 'The file does not contain a JSON object.' }
+            $script:UIConfig = Merge-UIConfigTable -Base $script:DefaultConfig -Overlay $loaded
             Write-Verbose "Configuration loaded from: $ConfigPath"
         } catch {
             Write-Warning "Failed to load configuration from '$ConfigPath': $_"
             Write-Warning "Using default configuration"
-            $script:UIConfig = $script:DefaultConfig
+            $script:UIConfig = Merge-UIConfigTable -Base $script:DefaultConfig
         }
     } else {
         Write-Verbose "Configuration file not found: $ConfigPath"
         Write-Verbose "Using default configuration"
-        $script:UIConfig = $script:DefaultConfig
+        # A copy: Set-ConsoleTheme changes the active configuration, never the built-in one.
+        $script:UIConfig = Merge-UIConfigTable -Base $script:DefaultConfig
     }
 }
 
@@ -141,11 +137,11 @@ function ConvertTo-Hashtable {
         }
         return $hash
     } elseif ($InputObject -is [System.Collections.IEnumerable] -and $InputObject -isnot [string]) {
-        $array = @()
+        $array = [System.Collections.Generic.List[object]]::new()
         foreach ($item in $InputObject) {
-            $array += ConvertTo-Hashtable -InputObject $item
+            $array.Add((ConvertTo-Hashtable -InputObject $item))
         }
-        return $array
+        return , $array.ToArray()
     } else {
         return $InputObject
     }
@@ -239,10 +235,15 @@ function Get-UIColor {
     $themeName = if ($Theme) { $Theme } else { $script:UIConfig.UILibrary.ActiveTheme }
 
     $colorScheme = $script:UIConfig.UILibrary.ColorScheme
-    if ($colorScheme.ContainsKey($themeName)) {
+    if ($colorScheme -is [hashtable] -and $colorScheme.ContainsKey($themeName)) {
         $themeColors = $colorScheme[$themeName]
-        if ($themeColors.ContainsKey($ColorType)) {
+        if ($themeColors -is [hashtable] -and $themeColors.ContainsKey($ColorType)) {
             return $themeColors[$ColorType]
+        }
+        # A theme from the configuration file may leave out roles: they come from the Default theme.
+        $defaultColors = $colorScheme['Default']
+        if ($defaultColors -is [hashtable] -and $defaultColors.ContainsKey($ColorType)) {
+            return $defaultColors[$ColorType]
         }
     }
 
@@ -280,7 +281,7 @@ function Get-UIIcon {
     }
 
     $icons = $script:UIConfig.UILibrary.Components.Status.Icons
-    if ($icons.ContainsKey($IconType)) {
+    if ($icons -is [hashtable] -and $icons.ContainsKey($IconType)) {
         return $icons[$IconType]
     }
 
@@ -293,10 +294,13 @@ function Set-ConsoleTheme {
         Changes the active UI theme.
 
     .DESCRIPTION
-        Sets the active theme for the UI framework. The theme must exist in the configuration.
+        Sets the active theme for the UI framework. The theme must exist in the configuration:
+        the built-in ones are Default, Cyberpunk, Classic and Monochrome, and a theme added to the
+        ColorScheme section of ui_config.json can be used by its name too. Custom creates a theme
+        from -CustomColors.
 
     .PARAMETER ThemeName
-        The theme name to activate (Default, Cyberpunk, Classic, Monochrome, or Custom).
+        The theme name to activate: one of Get-AvailableTheme, or Custom. Tab completion lists them.
 
     .PARAMETER CustomColors
         Optional hashtable of custom colors when using Custom theme.
@@ -318,7 +322,12 @@ function Set-ConsoleTheme {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory=$true)]
-        [ValidateSet('Default', 'Cyberpunk', 'Classic', 'Monochrome', 'Custom')]
+        [ValidateNotNullOrEmpty()]
+        [ArgumentCompleter({
+                param($commandName, $parameterName, $wordToComplete)
+                $null = $commandName, $parameterName
+                @(Get-AvailableTheme) + 'Custom' | Sort-Object -Unique | Where-Object { $_ -like "$wordToComplete*" }
+            })]
         [string]$ThemeName,
 
         [hashtable]$CustomColors = @{}
@@ -337,7 +346,7 @@ function Set-ConsoleTheme {
         $defaultColors = $script:UIConfig.UILibrary.ColorScheme.Default
         $customTheme = @{}
 
-        foreach ($colorType in @('Primary', 'Secondary', 'Success', 'Warning', 'Error', 'Info', 'Muted', 'Highlight')) {
+        foreach ($colorType in $script:HermesColorRoles) {
             if ($CustomColors.ContainsKey($colorType)) {
                 $customTheme[$colorType] = $CustomColors[$colorType]
             } else {

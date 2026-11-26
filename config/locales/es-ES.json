@@ -3,7 +3,8 @@
         "ExitPrompt": "(0 para salir)",
         "SelectPrompt": "Selecciona una opción",
         "InvalidOption": "Opción inválida. Intenta de nuevo.",
-        "PressEnter": "Presiona Enter para continuar..."
+        "PressEnter": "Presiona Enter para continuar...",
+        "Recommended": "← recomendado"
     },
     "Confirmation": {
         "Prompt": "(S/N)"
@@ -20,6 +21,13 @@
     },
     "Selection": {
         "Hint": "Flechas para moverte, Enter para elegir, Esc para cancelar",
-        "MultiHint": "Flechas para moverte, Espacio marca, A marca todo, Enter acepta, Esc cancela"
+        "MultiHint": "Flechas para moverte, Espacio marca, A marca todo, Enter acepta, Esc cancela",
+        "FilterHint": "Escribe para filtrar, flechas para moverte, Enter para elegir, Esc borra o cancela",
+        "FilterMultiHint": "Escribe para filtrar, Espacio marca, Enter acepta, Esc borra o cancela",
+        "NoMatch": "(sin coincidencias)",
+        "Cancelled": "(cancelado)"
+    },
+    "Choice": {
+        "Invalid": "«{0}» no es una opción. Escribe una de estas: {1}"
     }
 }
