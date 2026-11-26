@@ -609,8 +609,19 @@ function Write-ConsoleText {
 
     .PARAMETER Indent
         Spaces before every line after the first with -Wrap. Defaults to the spaces the text starts with, so
-        an indented paragraph stays indented. Use the length of a prefix ("[x] ") to align the lines under
-        the text after it.
+        an indented paragraph stays indented, or to the width of -Prefix.
+
+    .PARAMETER Prefix
+        Text written before the first line, as it is (never read for color marks), in -PrefixColor. With
+        -Wrap the following lines start under the text, after the prefix. A prefix of spaces indents every line.
+
+    .PARAMETER PrefixColor
+        Color of -Prefix. Defaults to -Color.
+
+    .EXAMPLE
+        Write-ConsoleText -Plain -Wrap -Prefix '    high     ' -PrefixColor Red -Color Gray $alert.Title
+
+        A severity in its column and the title wrapped under itself.
 
     .EXAMPLE
         Write-ConsoleText -Wrap -Indent 6 '  {Red}[x]{/} The firewall of the public profile is off, so any program can accept connections from the network.'
@@ -651,7 +662,11 @@ function Write-ConsoleText {
         [int]$Width = 0,
 
         [ValidateRange(-1, 200)]
-        [int]$Indent = -1
+        [int]$Indent = -1,
+
+        [string]$Prefix,
+
+        [string]$PrefixColor
     )
 
     process {
@@ -694,8 +709,14 @@ function Write-ConsoleText {
         }
         & $flush
 
+        $lineIndent = $Indent
+        if ($Prefix) {
+            $safePrefix = (ConvertTo-ConsoleSafeText -Text $Prefix).Replace("`n", ' ').Replace("`t", ' ')
+            $segments.Insert(0, @($safePrefix, $(if ($PrefixColor) { Resolve-HermesSegmentColor -Color $PrefixColor } else { $Color })))
+            if ($lineIndent -lt 0) { $lineIndent = Measure-ConsoleText -Text $safePrefix }
+        }
         # Assigned in each branch: the output of an if would unroll the list of lines.
-        if ($Wrap) { $lines = Split-ConsoleTextLine -Segments $segments -Width $Width -Indent $Indent }
+        if ($Wrap) { $lines = Split-ConsoleTextLine -Segments $segments -Width $Width -Indent $lineIndent }
         else { $lines = @(, $segments.ToArray()) }
         for ($l = 0; $l -lt $lines.Count; $l++) {
             Write-HermesSegment -Segments $lines[$l] -NoNewline:($l -eq $lines.Count - 1 -and $NoNewline)
@@ -828,6 +849,19 @@ function Format-ConsoleText {
     .PARAMETER NoEllipsis
         Cut without adding "…".
 
+    .PARAMETER KeepLineBreaks
+        Keep the line breaks: each line is cut (and padded) to -Width on its own, and the lines are returned
+        joined with line feeds, for a block of text such as a script or a log excerpt.
+
+    .PARAMETER MaxLines
+        With -KeepLineBreaks, keep at most this many lines; a last line "…" shows that there were more.
+        0 (the default) keeps them all.
+
+    .EXAMPLE
+        Format-ConsoleText -Text $scriptBlockText -Width 100 -KeepLineBreaks -MaxLines 25
+
+        The first 25 lines of the script, each cut to 100 columns.
+
     .EXAMPLE
         Format-ConsoleText -Text 'Windows Defender Firewall' -Width 12
 
@@ -852,12 +886,25 @@ function Format-ConsoleText {
         [ValidateSet('None', 'Left', 'Right')]
         [string]$Align = 'None',
 
-        [switch]$NoEllipsis
+        [switch]$NoEllipsis,
+
+        [switch]$KeepLineBreaks,
+
+        [ValidateRange(0, [int]::MaxValue)]
+        [int]$MaxLines = 0
     )
 
     if ($Width -le 0) { return '' }
     $line = [string]$Text
     if ($script:HermesControlRegex.IsMatch($line)) { $line = ConvertTo-ConsoleSafeText -Text $line }
+    if ($KeepLineBreaks) {
+        $lines = @($line -split "`n")
+        $more = $MaxLines -gt 0 -and $lines.Count -gt $MaxLines
+        if ($more) { $lines = @($lines[0..($MaxLines - 1)]) }
+        $out = @(foreach ($l in $lines) { Format-ConsoleText -Text $l -Width $Width -Align $Align -NoEllipsis:$NoEllipsis })
+        if ($more) { $out += [string][char]0x2026 }
+        return ($out -join "`n")
+    }
     $line = $line.Replace("`n", ' ').Replace("`t", ' ')
     $used = Measure-ConsoleText -Text $line
     if ($used -gt $Width) {

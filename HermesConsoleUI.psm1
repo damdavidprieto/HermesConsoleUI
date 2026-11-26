@@ -57,5 +57,6 @@ Export-ModuleMember -Alias 'Get-AvailableThemes', 'Get-AvailableLocales' -Functi
     # Line components
     'Set-ConsoleLayout', 'Get-ConsoleLayout', 'Register-ConsoleStyle', 'Unregister-ConsoleStyle', 'Get-ConsoleStyle',
     'Write-ConsoleLine', 'Write-ConsoleKeyValue', 'Write-ConsoleGrid', 'Start-ConsoleCapture', 'Stop-ConsoleCapture',
-    'Wait-ConsoleKey', 'Enable-ConsoleHostRedirect', 'Disable-ConsoleHostRedirect'
+    'Wait-ConsoleKey', 'Enable-ConsoleHostRedirect', 'Disable-ConsoleHostRedirect',
+    'Enable-ConsoleSimulation', 'Disable-ConsoleSimulation', 'Invoke-ConsoleSimulation'
 )

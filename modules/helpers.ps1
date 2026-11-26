@@ -305,6 +305,7 @@ function Test-InteractiveConsole {
     param()
 
     if ($script:HermesCapture) { return $false }
+    if ($script:HermesSimulation) { return $script:HermesSimulation.Interactive }
     if ($null -ne $script:HermesInteractiveOverride) { return [bool]$script:HermesInteractiveOverride }
     if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) { return $false }
     if ($Host.Name -notin 'ConsoleHost', 'Visual Studio Code Host') { return $false }
