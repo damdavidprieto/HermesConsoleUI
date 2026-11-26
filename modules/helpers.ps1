@@ -102,13 +102,95 @@ function Write-HermesHost {
         Write-Host @PSBoundParameters
     }
 
-    if ($script:HermesOutputHandler -and -not $script:HermesHandlerPaused) {
+    if (($script:HermesOutputHandler -or $script:HermesCapture) -and -not $script:HermesHandlerPaused) {
         $separator = if ($PSBoundParameters.ContainsKey('Separator')) { [string]$Separator } else { ' ' }
         $text = if ($PSBoundParameters.ContainsKey('Object')) { @($clean) -join $separator } else { '' }
         $color = if ($PSBoundParameters.ContainsKey('ForegroundColor') -or $ForegroundColor) { [string]$ForegroundColor } else { '' }
         if (-not [string]::IsNullOrEmpty($env:NO_COLOR)) { $color = '' }
-        # A failing handler must not break the user interface.
-        try { & $script:HermesOutputHandler $text ([bool]$NoNewline) $color } catch { Write-Verbose "Output handler failed: $($_.Exception.Message)" }
+        Send-HermesOutput -Text $text -NoNewline ([bool]$NoNewline) -Color $color
+    }
+}
+
+function Send-HermesOutput {
+    <#
+    .SYNOPSIS
+        Passes a piece of output to the output handler and to the capture file, when there are.
+    .DESCRIPTION
+        A failing handler or a capture file that cannot be written must not break the user interface.
+    #>
+    [CmdletBinding()]
+    param([AllowEmptyString()][string]$Text, [bool]$NoNewline, [AllowEmptyString()][string]$Color)
+
+    if ($script:HermesHandlerPaused) { return }
+    if ($script:HermesOutputHandler) {
+        try { & $script:HermesOutputHandler $Text $NoNewline $Color } catch { Write-Verbose "Output handler failed: $($_.Exception.Message)" }
+    }
+    $capture = $script:HermesCapture
+    if ($capture) {
+        $null = $capture.Line.Append($Text)
+        if (-not $NoNewline) {
+            try { [System.IO.File]::AppendAllText($capture.Path, $capture.Line.ToString() + "`n", $capture.Encoding) } catch { Write-Verbose "Capture failed: $($_.Exception.Message)" }
+            $null = $capture.Line.Clear()
+        }
+    }
+}
+
+# Virtual terminal codes of the console colors, for lines written in one call (Write-HermesSegment).
+$script:HermesAnsiColor = @{
+    Black = 30; DarkRed = 31; DarkGreen = 32; DarkYellow = 33; DarkBlue = 34; DarkMagenta = 35; DarkCyan = 36; Gray = 37
+    DarkGray = 90; Red = 91; Green = 92; Yellow = 93; Blue = 94; Magenta = 95; Cyan = 96; White = 97
+}
+
+function Write-HermesSegment {
+    <#
+    .SYNOPSIS
+        Writes one line made of (text, color) pairs, then ends it unless -NoNewline.
+    .DESCRIPTION
+        Where the console understands virtual terminal sequences the whole line is written with one Write-Host
+        call, with the colors as escape sequences: much faster than one call per color, and the line is never
+        split by other output. Elsewhere, and when NO_COLOR is set, each piece is written with Write-HermesHost
+        (with NO_COLOR, as one plain call). The handler and the capture receive the pieces as with separate
+        writes: each piece without a new line, then the end of the line.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification = 'Console UI components write to the host by design.')]
+    [CmdletBinding()]
+    param([AllowEmptyCollection()][object[]]$Segments, [switch]$NoNewline)
+
+    $noColor = -not [string]::IsNullOrEmpty($env:NO_COLOR)
+    $vt = -not $noColor -and -not $script:HermesOutputQuiet -and (Test-HermesTrueColor)
+    if (-not $vt -and -not $noColor) {
+        foreach ($segment in $Segments) {
+            if ($segment[1]) { Write-HermesHost $segment[0] -NoNewline -ForegroundColor $segment[1] } else { Write-HermesHost $segment[0] -NoNewline }
+        }
+        if (-not $NoNewline) { Write-HermesHost '' }
+        return
+    }
+
+    if ($script:HermesStatusLineActive) { Clear-ConsoleStatusLine }
+    $esc = [char]27
+    $line = [System.Text.StringBuilder]::new()
+    $current = $null
+    $pieces = [System.Collections.Generic.List[object]]::new()
+    foreach ($segment in $Segments) {
+        $text = [string]$segment[0]
+        if ($script:HermesControlRegex.IsMatch($text)) { $text = ConvertTo-ConsoleSafeText -Text $text }
+        $color = if ($noColor) { '' } else { [string]$segment[1] }
+        $pieces.Add(@($text, $color))
+        if ($vt -and $color -ne $current) {
+            if ($color -match '^#[0-9A-Fa-f]{6}$') {
+                $null = $line.Append(('{0}[38;2;{1};{2};{3}m' -f $esc, [Convert]::ToInt32($color.Substring(1, 2), 16), [Convert]::ToInt32($color.Substring(3, 2), 16), [Convert]::ToInt32($color.Substring(5, 2), 16)))
+            }
+            elseif ($color -and $script:HermesAnsiColor.ContainsKey($color)) { $null = $line.Append("$esc[$($script:HermesAnsiColor[$color])m") }
+            else { $null = $line.Append("$esc[39m") }
+            $current = $color
+        }
+        $null = $line.Append($text)
+    }
+    if ($vt -and $current) { $null = $line.Append("$esc[0m") }
+    if (-not $script:HermesOutputQuiet) { Write-Host $line.ToString() -NoNewline:$NoNewline }
+    if (($script:HermesOutputHandler -or $script:HermesCapture) -and -not $script:HermesHandlerPaused) {
+        foreach ($piece in $pieces) { Send-HermesOutput -Text $piece[0] -NoNewline $true -Color $piece[1] }
+        if (-not $NoNewline) { Send-HermesOutput -Text '' -NoNewline $false -Color '' }
     }
 }
 
@@ -133,9 +215,8 @@ function Send-HermesAnswer {
     [CmdletBinding()]
     param([AllowEmptyString()][string]$Text)
 
-    if (-not $script:HermesOutputHandler -or $script:HermesHandlerPaused) { return }
-    $clean = ConvertTo-ConsoleSafeText -Text $Text
-    try { & $script:HermesOutputHandler $clean $false '' } catch { Write-Verbose "Output handler failed: $($_.Exception.Message)" }
+    if (-not ($script:HermesOutputHandler -or $script:HermesCapture) -or $script:HermesHandlerPaused) { return }
+    Send-HermesOutput -Text (ConvertTo-ConsoleSafeText -Text $Text) -NoNewline $false -Color ''
 }
 
 function Test-HermesTrueColor {
@@ -182,13 +263,14 @@ function ConvertTo-NearestConsoleColor {
 function Test-HermesLiveOutput {
     <#
     .SYNOPSIS
-        True when output reaches a console that can be rewritten in place: not redirected, and not only sent to
-        an output handler (Register-ConsoleOutputHandler -Quiet).
+        True when output reaches a console that can be rewritten in place: not redirected, not only sent to
+        an output handler (Register-ConsoleOutputHandler -Quiet), and not captured to a file (Start-ConsoleCapture).
     #>
     [CmdletBinding()]
     [OutputType([bool])]
     param()
 
+    if ($script:HermesCapture) { return $false }
     if ($null -ne $script:HermesLiveOverride) { return [bool]$script:HermesLiveOverride }
     if ($script:HermesOutputQuiet) { return $false }
     try { return -not [Console]::IsOutputRedirected } catch { return $false }
@@ -215,12 +297,14 @@ function Test-InteractiveConsole {
     <#
     .SYNOPSIS
         True when keys can be read one at a time and the screen redrawn: a real console with
-        neither input nor output redirected (not the ISE, a pipe, a CI log or a remote session).
+        neither input nor output redirected (not the ISE, a pipe, a CI log or a remote session), and no capture
+        to a file (Start-ConsoleCapture), which keeps the options and the typed answer instead.
     #>
     [CmdletBinding()]
     [OutputType([bool])]
     param()
 
+    if ($script:HermesCapture) { return $false }
     if ($null -ne $script:HermesInteractiveOverride) { return [bool]$script:HermesInteractiveOverride }
     if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) { return $false }
     if ($Host.Name -notin 'ConsoleHost', 'Visual Studio Code Host') { return $false }

@@ -1,6 +1,6 @@
 @{
     RootModule           = 'HermesConsoleUI.psm1'
-    ModuleVersion        = '2.7.0'
+    ModuleVersion        = '2.8.0'
     CompatiblePSEditions = @('Desktop', 'Core')
     GUID                 = 'a7f3e8d2-4c91-4b5a-9e7f-2d8c3a1b6e4f'
     Author               = 'David Prieto'
@@ -76,6 +76,21 @@
         'New-ConsoleRow'
         'New-ConsoleColumn'
         'Write-ConsoleLayout'
+
+        # Line components
+        'Set-ConsoleLayout'
+        'Get-ConsoleLayout'
+        'Register-ConsoleStyle'
+        'Unregister-ConsoleStyle'
+        'Get-ConsoleStyle'
+        'Write-ConsoleLine'
+        'Write-ConsoleKeyValue'
+        'Write-ConsoleGrid'
+        'Start-ConsoleCapture'
+        'Stop-ConsoleCapture'
+        'Wait-ConsoleKey'
+        'Enable-ConsoleHostRedirect'
+        'Disable-ConsoleHostRedirect'
     )
     CmdletsToExport      = @()
     VariablesToExport    = @()

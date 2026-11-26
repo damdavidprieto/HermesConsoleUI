@@ -203,6 +203,9 @@ function Write-ConsoleChart {
         @{ 0 = 'Red'; 70 = 'Yellow'; 100 = 'Green' }. The color of the highest threshold reached is used;
         below all of them, -Color.
 
+    .PARAMETER Style
+        A style registered with Register-ConsoleStyle that colors the bar by its percentage, instead of -Thresholds.
+
     .PARAMETER Width
         Number of characters in the bar. Defaults to 20.
 
@@ -244,6 +247,8 @@ function Write-ConsoleChart {
 
         [System.Collections.IDictionary]$Thresholds,
 
+        [string]$Style,
+
         [ValidateRange(1, 200)]
         [int]$Width = 20,
 
@@ -263,6 +268,10 @@ function Write-ConsoleChart {
     if ($Thresholds) {
         $reached = @($Thresholds.Keys | Where-Object { ($_ -as [double]) -le $percent } | Sort-Object { [double]$_ } -Descending)
         if ($reached.Count) { $barColor = [string]$Thresholds[$reached[0]] }
+    }
+    if ($Style) {
+        $styled = (Resolve-HermesStyleValue -Style (Get-HermesStyle -Name $Style) -Value $percent)[1]
+        if ($styled) { $barColor = $styled }
     }
     if ($Label) { Write-HermesHost ('  ' + $Label + ': ') -NoNewline -ForegroundColor (Resolve-UIColor -Role Highlight) }
     else { Write-HermesHost '  ' -NoNewline }
@@ -504,7 +513,8 @@ function Write-ConsoleTable {
         in a column definition to choose.
         A column definition can also have Map, a hashtable that replaces values by the text to show
         (for example Compliant by "OK"), and Colors, a hashtable from value to the color of that cell:
-        states then read as words, not only as colors.
+        states then read as words, not only as colors. Style, the name of a style registered with
+        Register-ConsoleStyle, gives both at once, also for numbers with thresholds.
         With -ColorMapProperty and -ColorMap, each row is colored according to the value of
         that property, for example green for "Running" and red for "Stopped".
 
@@ -514,7 +524,7 @@ function Write-ConsoleTable {
     .PARAMETER Columns
         Column definitions: hashtables (or objects) with Header and Property, and optionally Width
         (characters, including the space before the next column), Align (Left or Right), Map (value to
-        text shown) and Colors (value to cell color).
+        text shown), Colors (value to cell color) and Style (a registered style for both).
 
     .PARAMETER Title
         Optional title shown above the table. Alias: Header.
@@ -613,7 +623,7 @@ function Write-ConsoleTable {
 
         $headerColor = Resolve-UIColor -Role Secondary
         $rowColor = Resolve-UIColor -Role Highlight
-        $cellColors = @($Columns | Where-Object { $_.Colors }).Count -gt 0
+        $cellColors = @($Columns | Where-Object { $_.CellColors }).Count -gt 0
 
         Write-HermesHost ''
         if ($Title) { Write-HermesHost ('  ' + $Title) -ForegroundColor (Resolve-UIColor -Role Primary) }
@@ -632,7 +642,7 @@ function Write-ConsoleTable {
                 Write-HermesHost '  ' -NoNewline
                 foreach ($col in $Columns) {
                     $cellColor = $color
-                    if ($col.Colors -and $col.Colors.Contains($col.Keys[$r])) { $cellColor = $col.Colors[$col.Keys[$r]] }
+                    if ($col.CellColors -and $col.CellColors[$r]) { $cellColor = $col.CellColors[$r] }
                     Write-HermesHost (& $cellText $col $r) -NoNewline -ForegroundColor $cellColor
                 }
                 Write-HermesHost ''
@@ -698,6 +708,9 @@ function Resolve-TableColumn {
         # Each value is read and cleaned once: the texts are used for the width and for the rows.
         $map = Get-ColumnValue $col 'Map'
         $colors = Get-ColumnValue $col 'Colors'
+        $styleName = Get-ColumnValue $col 'Style'
+        $style = if ($styleName) { Get-HermesStyle -Name $styleName } else { $null }
+        $cellColors = if ($colors -or $style) { [string[]]::new($Rows.Count) } else { $null }
         $texts = [string[]]::new($Rows.Count)
         $keys = [string[]]::new($Rows.Count)
         $longest = Measure-ConsoleText -Text ([string]$header)
@@ -707,6 +720,12 @@ function Resolve-TableColumn {
             if ($null -ne $value) { $present++; if ($numeric -notcontains $value.GetType()) { $allNumbers = $false } }
             $keys[$r] = [string]$value
             $text = if ($map -and $map.Contains($keys[$r])) { [string]$map[$keys[$r]] } else { $keys[$r] }
+            if ($style) {
+                $resolved = Resolve-HermesStyleValue -Style $style -Value $value
+                if (-not ($map -and $map.Contains($keys[$r]))) { $text = [string]$resolved[0] }
+                $cellColors[$r] = $resolved[1]
+            }
+            if ($colors -and $colors.Contains($keys[$r])) { $cellColors[$r] = Resolve-HermesSegmentColor -Color ([string]$colors[$keys[$r]]) }
             if ($script:HermesControlRegex.IsMatch($text)) { $text = ConvertTo-ConsoleSafeText -Text $text }
             $text = $text.Replace("`n", ' ').Replace("`t", ' ')
             $texts[$r] = $text
@@ -714,14 +733,14 @@ function Resolve-TableColumn {
             if ($script:HermesWideRegex.IsMatch($text)) { $wide = $true; $textWidth = Measure-ConsoleText -Text $text }
             if ($textWidth -gt $longest) { $longest = $textWidth }
         }
-        if ($map) { $allNumbers = $false }
+        if ($map -or ($style -and $style.Map.Count)) { $allNumbers = $false }
         $width = Get-ColumnValue $col 'Width'
         $auto = -not ($width -as [int])
         if ($auto) { $width = [Math]::Min([Math]::Max([int]$longest + 1, 4), $maxWidth) }
         if ([int]$width -lt 2) { $width = 2 }
         $align = Get-ColumnValue $col 'Align'
         if (-not $align) { $align = if ($present -and $allNumbers) { 'Right' } else { 'Left' } }
-        [pscustomobject]@{ Header = $header; Property = $property; Width = [int]$width; Align = $align; Auto = $auto; Texts = $texts; Keys = $keys; Colors = $colors; Wide = $wide }
+        [pscustomobject]@{ Header = $header; Property = $property; Width = [int]$width; Align = $align; Auto = $auto; Texts = $texts; Keys = $keys; CellColors = $cellColors; Wide = $wide }
     }
     $resolved = @($resolved)
 

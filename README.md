@@ -60,13 +60,54 @@ interactive menu. Each example runs as part of the tests.
 | Text | `Write-ConsoleText`, `Format-ConsoleText`, `Measure-ConsoleText`, `Get-ConsoleWidth`, `Clear-ConsoleScreen`, `Register-ConsoleOutputHandler`, `Unregister-ConsoleOutputHandler`, `Write-ConsoleTitle`, `Write-ConsoleHeader`, `Write-ConsoleSubtitle`, `Write-ConsoleStatus`, `Write-ConsoleInfo`, `Write-ConsoleError`, `Write-ConsoleMetadata`, `Write-ConsoleSummary`, `Write-ConsoleDiff`, `Write-ConsoleSeparator`, `Write-ConsoleBreadcrumb` |
 | Data | `Write-ConsoleTable`, `Show-ConsoleList`, `Write-ConsoleTree`, `Write-ConsoleChart`, `Write-ConsoleSparkline`, `Write-ConsoleBox`, `Write-ConsolePanel` |
 | Interaction | `Read-ConsoleSelection`, `Read-ConsoleMenu`, `Show-ConsoleMenu`, `Read-ConsoleChoice`, `Invoke-ConsoleMenu`, `Read-ConsoleMultiChoice`, `Read-ConsoleInput`, `Read-ConsoleConfirmation`, `Read-ConsolePassword`, `Invoke-ConsoleSpinner`, `Write-ConsoleStatusLine`, `Clear-ConsoleStatusLine`, `Show-ConsoleProgress`, `Write-ConsoleProgress`, `Show-ConsoleNotification` |
+| Lines | `Write-ConsoleLine`, `Write-ConsoleKeyValue`, `Write-ConsoleGrid`, `Register-ConsoleStyle`, `Get-ConsoleStyle`, `Unregister-ConsoleStyle`, `Set-ConsoleLayout`, `Get-ConsoleLayout`, `Start-ConsoleCapture`, `Stop-ConsoleCapture`, `Wait-ConsoleKey`, `Enable-ConsoleHostRedirect`, `Disable-ConsoleHostRedirect` |
 | Layout | `New-ConsoleLayout`, `New-ConsoleRow`, `New-ConsoleColumn`, `Write-ConsoleLayout` |
 | Themes | `Set-ConsoleTheme`, `Get-ConsoleTheme`, `Get-AvailableTheme`, `Get-UIColor`, `Get-UIIcon`, `Get-UIConfig`, `Initialize-UIConfig` |
 | Localization | `Set-UILocale`, `Get-UILocale`, `Get-AvailableLocale`, `Get-LocalizedString`, `Initialize-Localization` |
 
 `Get-Command -Module HermesConsoleUI` lists them and `Get-Help <command> -Full` documents each one.
 Commands that return lines (`Show-ConsoleList`, `Write-ConsoleTree`, `Write-ConsoleTable`, `Write-ConsoleChart`,
-`Write-ConsoleBox`) accept `-ReturnLines`, so their output can go inside a panel or a layout column.
+`Write-ConsoleBox`, `Write-ConsoleLine`, `Write-ConsoleKeyValue`, `Write-ConsoleGrid`) accept `-ReturnLines`, so
+their output can go inside a panel or a layout column.
+
+## Reports line by line
+
+An application that writes its own reports defines its words and colors once and then writes each line in
+one call:
+
+```powershell
+Set-ConsoleLayout -MaxWidth 110 -Margin 2 -DefaultWidth 100
+Register-ConsoleStyle State -Map @{ Compliant = 'OK', 'Green'; NonCompliant = 'Pending', 'Red' } -Default 'No data', 'DarkYellow'
+Register-ConsoleStyle Percent -Thresholds @{ 0 = 'Red'; 70 = 'Yellow'; 100 = 'Green' } -Format '{0,3} %'
+
+Write-ConsoleTitle -Title 'Audit' -Subtitle 'Checks every rule up to your target level.' -Align Left
+Write-ConsoleHeader -Text 'Firewall' -Note 'compliant 4 of 6' -Compact
+foreach ($r in $results) {
+    Write-ConsoleLine @(
+        @{ Value = $r.Status; Style = 'State' }        # as wide as the longest word of the style
+        @{ Text = $r.Id; Color = 'DarkCyan'; Width = 8 }
+        @{ Text = $r.Title; Fill = 'Cut' }              # the rest of the line, cut with …
+        $(if ($r.Risk -eq 'high') { @{ Text = 'high risk'; Color = 'Red'; Gap = 2 } })
+    )
+}
+Write-ConsoleLine @{ Text = 'L2 Recommended'; Width = 16 }, @{ Bar = 82; Width = 24; Style = 'Percent' }, @{ Value = 82; Style = 'Percent' }
+Write-ConsoleKeyValue ([ordered]@{ Rule = 'FW-001'; State = @{ Value = 'NonCompliant'; Style = 'State' }; Why = $rule.Reason })
+Write-ConsoleGrid -ColumnWidth 38 $areaItems                   # as many per line as fit
+Wait-ConsoleKey
+```
+
+- `Write-ConsoleLine` takes segments: a string, an array (text, color, width) or a hashtable with `Text`,
+  `Color`, `Width`, `Align`, `Fill` (`Cut` or `Wrap`, the rest of the line), `Gap`, `Value` and `Style`, or
+  `Bar`. A `$null` segment is skipped, so a segment can depend on a condition. A wrapped segment keeps its
+  following lines under its start, after a label or a severity column.
+- `Register-ConsoleStyle` names the text and color of each value; lines, key-value lists, table columns
+  (`Style`) and charts (`-Style`) use it, and `Get-ConsoleStyle` returns them for anything else.
+- `Set-ConsoleLayout` sets the widest line, the margin and the width to use when the console width is
+  unknown, for every component.
+- Where the terminal supports virtual terminal sequences (PowerShell 7 in Windows Terminal, and most
+  consoles), each line is written in one call, colors included: faster, and lines are never split.
+- `Enable-ConsoleHostRedirect` makes `Write-Host` in the calling script or module write through the module,
+  so code that still calls it is cleaned and captured too.
 
 ## Themes
 
@@ -126,12 +167,18 @@ while debugging.
 nothing is shown on screen. The answers typed to the prompts are passed too (a password as asterisks), so a
 capture keeps each question with its answer. `Unregister-ConsoleOutputHandler` removes it.
 
+`Start-ConsoleCapture -Path` keeps the same copy in a UTF-8 file, one complete line at a time, for example
+for a copy of the script that runs elevated in another window; `Stop-ConsoleCapture` ends it. While
+capturing nothing is rewritten in place: prompts list their options and read the typed answer, so the file
+shows both.
+
 ## Tables
 
 `Write-ConsoleTable` sizes each column to its longest value (up to `MaxColumnWidth` in the theme
 configuration), narrows the widest ones when the table does not fit in the window, aligns numbers
 to the right and underlines the header. Give a column a `Width` or an `Align` to fix them, a `Map` to show
-words instead of values and `Colors` to color each cell by its value. Values that do not fit end with `…`.
+words instead of values and `Colors` to color each cell by its value, or a `Style` for both. Values that do
+not fit end with `…`.
 Widths are measured as the console shows them: East Asian characters and emoji take two columns.
 
 ## Colors
