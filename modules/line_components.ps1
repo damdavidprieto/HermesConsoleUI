@@ -335,10 +335,10 @@ function Resolve-HermesSegmentColor {
     <#
     .SYNOPSIS
         A console color name, "#RRGGBB" or a theme role, resolved to what Write-Host takes; '' and $null give $null.
+    .DESCRIPTION
+        A simple function, like ConvertTo-HermesSegment, because it runs for every colored segment.
     #>
-    [CmdletBinding()]
-    [OutputType([string])]
-    param([AllowNull()][AllowEmptyString()][string]$Color)
+    param([string]$Color)
 
     if ([string]::IsNullOrWhiteSpace($Color)) { return $null }
     # Console color names are looked up once; roles follow the active theme, so they are resolved every time.
@@ -355,10 +355,11 @@ function ConvertTo-HermesSegment {
     <#
     .SYNOPSIS
         Reads one segment of Write-ConsoleLine (string, array or hashtable/object) as a hashtable.
+    .DESCRIPTION
+        A simple function, not an advanced one: it runs for every segment, and binding an advanced function's
+        parameters costs more than the work it does.
     #>
-    [CmdletBinding()]
-    [OutputType([hashtable])]
-    param([AllowNull()][object]$Segment)
+    param($Segment)
 
     # Settings are read straight from the hashtable: this runs for every segment of every line.
     $s = @{ Text = ''; Color = $null; Width = 0; Align = 'Left'; Fill = 'None'; Gap = -1; Bar = $null; Max = 100; Empty = $null }
@@ -444,7 +445,8 @@ function ConvertTo-HermesLine {
         $p.GapText = if ($p.Gap -ge 0 -and $i -gt 0) { ' ' * $p.Gap } elseif ($i -gt 0) { $Separator } else { '' }
         $used += $gap
         if ($fill -lt 0 -and $p.Fill -ne 'None') { $fill = $i; continue }
-        $used += $(if ($p.Width -gt 0) { $p.Width } else { Measure-ConsoleText -Text $p.Text })
+        $p.Wide = $script:HermesWideRegex.IsMatch($p.Text)
+        $used += $(if ($p.Width -gt 0) { $p.Width } elseif ($p.Wide) { Measure-ConsoleText -Text $p.Text } else { $p.Text.Length })
     }
     $room = [Math]::Max($Width - $used, 10)
 
@@ -475,10 +477,19 @@ function ConvertTo-HermesLine {
             continue
         }
         $text = $p.Text
-        if ($i -eq $fill) { $text = Format-ConsoleText -Text $text -Width $room }
-        elseif ($p.Width -gt 0) { $text = Format-ConsoleText -Text $text -Width $p.Width -Align $p.Align }
+        $limit = if ($i -eq $fill) { $room } else { $p.Width }
+        if ($limit -gt 0) {
+            if ($script:HermesWideRegex.IsMatch($text)) {
+                $text = if ($i -eq $fill) { Format-ConsoleText -Text $text -Width $limit } else { Format-ConsoleText -Text $text -Width $limit -Align $p.Align }
+            }
+            else {
+                # The same as Format-ConsoleText for text without wide characters, without a call per segment.
+                if ($text.Length -gt $limit) { $text = $text.Substring(0, $limit - 1) + [char]0x2026 }
+                elseif ($i -ne $fill) { $text = if ($p.Align -eq 'Right') { $text.PadLeft($limit) } else { $text.PadRight($limit) } }
+            }
+        }
         if ($text) { $line.Add(@($text, $p.Color)) }
-        $column += Measure-ConsoleText -Text $text
+        $column += $(if ($script:HermesWideRegex.IsMatch($text)) { Measure-ConsoleText -Text $text } else { $text.Length })
     }
     $lines.Add($line.ToArray())
     return , $lines.ToArray()
