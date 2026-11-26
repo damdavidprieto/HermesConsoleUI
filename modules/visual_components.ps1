@@ -97,50 +97,79 @@ function Write-ConsoleTree {
 
     .DESCRIPTION
         Writes each key as a branch. A value that is a hashtable becomes a nested branch;
-        a string or an array becomes leaves under its key. Use ordered hashtables
-        ([ordered]@{}) to control the order of the branches.
+        a string or an array becomes leaves under its key. The last item of each level is drawn
+        with a corner and the others with a tee, and the vertical line stops after the last one.
+        Use ordered hashtables ([ordered]@{}) to control the order of the branches. With
+        -ReturnLines the lines are returned instead of written, for layouts and panels.
 
     .PARAMETER TreeData
         The tree to display: keys are branch names, values are nested hashtables, strings or arrays.
 
     .PARAMETER Indent
-        Text placed before every line of the top level. Nested levels add to it. Defaults to two spaces.
+        Text placed before every line. Defaults to two spaces.
+
+    .PARAMETER ReturnLines
+        Return the tree lines instead of writing them to the console.
 
     .EXAMPLE
         Write-ConsoleTree -TreeData ([ordered]@{ src = [ordered]@{ Core = "Config.ps1", "Localization.ps1" }; tests = "Unit" })
 
         Displays:
           ├── src
-          │   ├── Core
-          │   │   └── Config.ps1
-          │   │   └── Localization.ps1
-          ├── tests
-          │   └── Unit
+          │   └── Core
+          │       ├── Config.ps1
+          │       └── Localization.ps1
+          └── tests
+              └── Unit
     #>
     [CmdletBinding()]
+    [OutputType([object[]])]
     param(
         [Parameter(Mandatory = $true)]
         [ValidateNotNull()]
         [System.Collections.IDictionary]$TreeData,
 
-        [string]$Indent = '  '
+        [string]$Indent = '  ',
+
+        [switch]$ReturnLines
     )
 
-    $branchColor = Resolve-UIColor -Role Primary
-    $leafColor = Resolve-UIColor -Role Muted
-    $branch = [string][char]0x251C + [char]0x2500 + [char]0x2500 + ' '
-    $leaf = [string][char]0x2514 + [char]0x2500 + [char]0x2500 + ' '
-    $pipe = [string][char]0x2502 + '   '
+    $lines = [System.Collections.Generic.List[object]]::new()
+    Add-ConsoleTreeLine -TreeData $TreeData -Prefix $Indent -Lines $lines
+    if ($ReturnLines) { return @($lines | ForEach-Object { $_[0] }) }
 
-    foreach ($key in $TreeData.Keys) {
-        Write-HermesHost ($Indent + $branch + $key) -ForegroundColor $branchColor
-        $val = $TreeData[$key]
-        if ($val -is [System.Collections.IDictionary]) {
-            Write-ConsoleTree -TreeData $val -Indent ($Indent + $pipe)
+    $colors = @{ Branch = Resolve-UIColor -Role Primary; Leaf = Resolve-UIColor -Role Muted }
+    foreach ($line in $lines) { Write-HermesHost $line[0] -ForegroundColor $colors[$line[1]] }
+}
+
+function Add-ConsoleTreeLine {
+    <#
+    .SYNOPSIS
+        Adds the lines of one tree level (text and kind, Branch or Leaf) to a list, for Write-ConsoleTree.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][System.Collections.IDictionary]$TreeData,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Prefix,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][System.Collections.Generic.List[object]]$Lines
+    )
+
+    $tee = [string][char]0x251C + [char]0x2500 + [char]0x2500 + ' '
+    $corner = [string][char]0x2514 + [char]0x2500 + [char]0x2500 + ' '
+    $pipe = [string][char]0x2502 + '   '
+    $keys = @($TreeData.Keys)
+    for ($k = 0; $k -lt $keys.Count; $k++) {
+        $last = $k -eq $keys.Count - 1
+        $Lines.Add(@(($Prefix + $(if ($last) { $corner } else { $tee }) + $keys[$k]), 'Branch'))
+        $childPrefix = $Prefix + $(if ($last) { '    ' } else { $pipe })
+        $value = $TreeData[$keys[$k]]
+        if ($value -is [System.Collections.IDictionary]) {
+            Add-ConsoleTreeLine -TreeData $value -Prefix $childPrefix -Lines $Lines
         }
-        elseif ($null -ne $val) {
-            foreach ($item in @($val)) {
-                Write-HermesHost ($Indent + $pipe + $leaf + $item) -ForegroundColor $leafColor
+        elseif ($null -ne $value) {
+            $items = @($value)
+            for ($n = 0; $n -lt $items.Count; $n++) {
+                $Lines.Add(@(($childPrefix + $(if ($n -eq $items.Count - 1) { $corner } else { $tee }) + $items[$n]), 'Leaf'))
             }
         }
     }
@@ -525,14 +554,23 @@ function Write-ConsoleTable {
         $rule = foreach ($col in $Columns) { ('-' * ($col.Width - 1)) + ' ' }
         Write-HermesHost ('  ' + (-join $rule).TrimEnd()) -ForegroundColor (Resolve-UIColor -Role Muted)
 
-        foreach ($row in $rows) {
+        # The cell texts were cleaned once by Resolve-TableColumn; here they are only cut and padded.
+        $line = [System.Text.StringBuilder]::new()
+        for ($r = 0; $r -lt $rows.Count; $r++) {
             $color = $rowColor
             if ($ColorMapProperty) {
-                $key = [string]$row.$ColorMapProperty
+                $key = [string]$rows[$r].$ColorMapProperty
                 if ($ColorMap.ContainsKey($key)) { $color = $ColorMap[$key] }
             }
-            $cells = foreach ($col in $Columns) { Format-TableCell -Value $row.($col.Property) -Width $col.Width -Align $col.Align }
-            Write-HermesHost ('  ' + (-join $cells)) -ForegroundColor $color
+            $null = $line.Clear().Append('  ')
+            foreach ($col in $Columns) {
+                $text = $col.Texts[$r]
+                $room = $col.Width - 1
+                if ($text.Length -gt $room) { $text = $text.Substring(0, $room) }
+                if ($col.Align -eq 'Right') { $null = $line.Append($text.PadLeft($room)).Append(' ') }
+                else { $null = $line.Append($text.PadRight($col.Width)) }
+            }
+            Write-HermesHost $line.ToString() -ForegroundColor $color
         }
         Write-HermesHost ''
     }
@@ -560,7 +598,8 @@ function Resolve-TableColumn {
         Completes the column definitions of Write-ConsoleTable: width and alignment.
     .DESCRIPTION
         Columns without Width get the length of their longest value or header plus one (at most
-        the theme's MaxColumnWidth). If the table is wider than the console window, the widest
+        the theme's MaxColumnWidth). Each column also gets Texts: its values for every row, as
+        clean one-line text. If the table is wider than the console window, the widest
         automatic columns are narrowed, down to 6 characters. Columns without Align are aligned
         right when every value is a number.
     #>
@@ -580,30 +619,41 @@ function Resolve-TableColumn {
         $property = Get-ColumnValue $col 'Property'
         $header = Get-ColumnValue $col 'Header'
         if ($null -eq $header) { $header = $property }
-        $values = @($Rows | ForEach-Object { $_.$property })
+        # Each value is read and cleaned once: the texts are used for the width and for the rows.
+        $texts = [string[]]::new($Rows.Count)
+        $longest = ([string]$header).Length
+        $allNumbers = $true; $present = 0
+        for ($r = 0; $r -lt $Rows.Count; $r++) {
+            $value = $Rows[$r].$property
+            if ($null -ne $value) { $present++; if ($numeric -notcontains $value.GetType()) { $allNumbers = $false } }
+            $text = [string]$value
+            if ($script:HermesControlRegex.IsMatch($text)) { $text = ConvertTo-ConsoleSafeText -Text $text }
+            $text = $text.Replace("`n", ' ').Replace("`t", ' ')
+            $texts[$r] = $text
+            if ($text.Length -gt $longest) { $longest = $text.Length }
+        }
         $width = Get-ColumnValue $col 'Width'
         $auto = -not ($width -as [int])
-        if ($auto) {
-            $longest = (@([string]$header) + @($values | ForEach-Object { (ConvertTo-ConsoleSafeText -Text ([string]$_)) -replace '[\n\t]', ' ' }) |
-                    Measure-Object -Property Length -Maximum).Maximum
-            $width = [Math]::Min([Math]::Max([int]$longest + 1, 4), $maxWidth)
-        }
+        if ($auto) { $width = [Math]::Min([Math]::Max([int]$longest + 1, 4), $maxWidth) }
+        if ([int]$width -lt 2) { $width = 2 }
         $align = Get-ColumnValue $col 'Align'
-        if (-not $align) {
-            $present = @($values | Where-Object { $null -ne $_ })
-            $align = if ($present.Count -and -not @($present | Where-Object { $numeric -notcontains $_.GetType() }).Count) { 'Right' } else { 'Left' }
-        }
-        [pscustomobject]@{ Header = $header; Property = $property; Width = [int]$width; Align = $align; Auto = $auto }
+        if (-not $align) { $align = if ($present -and $allNumbers) { 'Right' } else { 'Left' } }
+        [pscustomobject]@{ Header = $header; Property = $property; Width = [int]$width; Align = $align; Auto = $auto; Texts = $texts }
     }
     $resolved = @($resolved)
 
     # Fit the console window: two spaces of indent, and the last column needs no trailing space.
+    # The widest automatic column loses one character at a time, down to 6.
     $available = (Get-ConsoleWidth) - 3
     if ($available -gt 0) {
-        while ((($resolved | Measure-Object -Property Width -Sum).Sum) -gt $available) {
-            $widest = $resolved | Where-Object { $_.Auto -and $_.Width -gt 6 } | Sort-Object Width -Descending | Select-Object -First 1
-            if (-not $widest) { break }
+        $total = 0
+        foreach ($col in $resolved) { $total += $col.Width }
+        while ($total -gt $available) {
+            $widest = $null
+            foreach ($col in $resolved) { if ($col.Auto -and $col.Width -gt 6 -and ($null -eq $widest -or $col.Width -gt $widest.Width)) { $widest = $col } }
+            if ($null -eq $widest) { break }
             $widest.Width--
+            $total--
         }
     }
     return $resolved

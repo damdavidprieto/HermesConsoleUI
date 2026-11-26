@@ -77,7 +77,9 @@ Set-ConsoleTheme -ThemeName Custom -CustomColors @{ Primary = 'DarkCyan'; Succes
 ```
 
 Themes define eight color roles: Primary, Secondary, Success, Warning, Error, Info, Muted and
-Highlight. The built-in themes are in [`config/ui_config.json`](config/ui_config.json).
+Highlight. The built-in themes are in [`config/ui_config.json`](config/ui_config.json); a theme added
+there (or in your own file, loaded with `Initialize-UIConfig -ConfigPath`) can be activated by its name.
+A configuration file only needs what it changes, and a theme that leaves out roles takes them from Default.
 
 ## Localization
 
@@ -87,7 +89,8 @@ Set-UILocale -Locale es-ES     # menus and prompts in Spanish
 ```
 
 The locale strings are in [`config/locales/`](config/locales/). The locale starts as the system
-culture when a file exists for it, and English otherwise.
+culture when a file exists for it, then a file of the same language (`es-MX` uses `es-ES`), and English
+otherwise.
 
 ## Menus and the screen
 

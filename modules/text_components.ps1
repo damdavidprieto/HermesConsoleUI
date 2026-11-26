@@ -572,7 +572,7 @@ function Write-ConsoleText {
     )
 
     process {
-        $roles = 'Primary', 'Secondary', 'Success', 'Warning', 'Error', 'Info', 'Muted', 'Highlight'
+        $roles = $script:HermesColorRoles
         $current = $Color
         $segments = [System.Collections.Generic.List[object]]::new()
         $buffer = [System.Text.StringBuilder]::new()

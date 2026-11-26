@@ -1,6 +1,5 @@
 {
     "UILibrary": {
-        "Version": "2.0.1",
         "ColorScheme": {
             "Default": {
                 "Primary": "Cyan",
@@ -45,14 +44,6 @@
         },
         "ActiveTheme": "Default",
         "Components": {
-            "Title": {
-                "DefaultColor": "Cyan",
-                "MinWidth": 60
-            },
-            "Header": {
-                "DefaultColor": "Yellow",
-                "Prefix": ">>> "
-            },
             "Status": {
                 "Icons": {
                     "Success": "[+]",
@@ -61,40 +52,8 @@
                     "Info": "[*]"
                 }
             },
-            "Box": {
-                "DefaultColor": "Cyan",
-                "BorderStyle": "ASCII"
-            },
-            "Chart": {
-                "DefaultColor": "Green",
-                "DefaultWidth": 20,
-                "FilledChar": "#",
-                "EmptyChar": "."
-            },
-            "Tree": {
-                "UseUnicode": true,
-                "Chars": {
-                    "Branch": "├──",
-                    "Leaf": "└──",
-                    "Pipe": "│  ",
-                    "Space": "   "
-                }
-            },
             "Table": {
-                "DefaultColumnWidth": 20,
-                "MaxColumnWidth": 80,
-                "HeaderColor": "Yellow",
-                "SeparatorColor": "DarkGray"
-            },
-            "Menu": {
-                "DefaultColor": "Cyan",
-                "OptionColor": "Gray",
-                "Width": 60
-            },
-            "Progress": {
-                "DefaultColor": "Cyan",
-                "CompleteColor": "Green",
-                "Width": 30
+                "MaxColumnWidth": 80
             }
         }
     }

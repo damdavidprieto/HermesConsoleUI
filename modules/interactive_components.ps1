@@ -307,6 +307,10 @@ function Read-ConsoleMultiChoice {
     .PARAMETER Prompt
         Prompt text. Defaults to the locale's "Select options (separated by comma)".
 
+    .PARAMETER ReturnIndex
+        Return the indexes (from 0) of the chosen options instead of the options, so options with the
+        same text can be told apart.
+
     .EXAMPLE
         $features = Read-ConsoleMultiChoice -Options "Logging", "Metrics", "Tracing"
 
@@ -319,7 +323,9 @@ function Read-ConsoleMultiChoice {
         [ValidateNotNullOrEmpty()]
         [object[]]$Options,
 
-        [string]$Prompt
+        [string]$Prompt,
+
+        [switch]$ReturnIndex
     )
 
     if (-not $Prompt) { $Prompt = Get-UIText -Key 'MultiChoice.Prompt' -Default 'Select options (separated by comma)' }
@@ -334,17 +340,17 @@ function Read-ConsoleMultiChoice {
 
     # Only 1..Count is valid. "0" used to select the last option (index -1), and a very
     # long number threw. Each option is returned once, in the order the user typed it.
-    $results = @()
+    $results = [System.Collections.Generic.List[object]]::new()
     $seen = @{}
     foreach ($idx in $val.Split(',')) {
         $n = 0
         $token = $idx.Trim()
         if ($token -match '^\d+$' -and [int]::TryParse($token, [ref]$n) -and $n -ge 1 -and $n -le $Options.Count -and -not $seen.ContainsKey($n)) {
             $seen[$n] = $true
-            $results += $Options[$n - 1]
+            $results.Add($(if ($ReturnIndex) { $n - 1 } else { $Options[$n - 1] }))
         }
     }
-    return $results
+    return $results.ToArray()
 }
 
 function Invoke-ConsoleSpinner {
@@ -513,6 +519,9 @@ function Read-ConsoleInput {
         passwords use Read-ConsolePassword, which does not echo the input.
         -Required, -Pattern and -Validate check the answer: until it is valid, the error message
         is shown and the question is asked again. The default value is checked too.
+        When the input runs out (redirected from a file or pipe that has ended) it returns the default
+        value, or an empty string when that is valid, and otherwise throws: it never waits forever for
+        input that cannot arrive.
 
     .PARAMETER Prompt
         Prompt text. Defaults to the locale's input prompt, "[?]".
@@ -573,6 +582,8 @@ function Read-ConsoleInput {
 
     while ($true) {
         $answer = Read-Host -Prompt $Prompt
+        # $null: the input has ended (a redirected file or pipe). Asking again would loop forever.
+        $ended = $null -eq $answer -and (Test-HermesInputRedirected)
         if ($hasDefault -and [string]::IsNullOrEmpty($answer)) { $answer = $DefaultValue }
 
         $valid = $true
@@ -584,7 +595,8 @@ function Read-ConsoleInput {
                 catch { $valid = $false }
             }
         }
-        if ($valid) { return $answer }
+        if ($valid) { return [string]$answer }
+        if ($ended) { throw [System.InvalidOperationException]::new('The input ended before a valid answer was read.') }
         Write-HermesHost ('  ' + $ErrorMessage) -ForegroundColor (Resolve-UIColor -Role Error)
     }
 }
@@ -775,8 +787,8 @@ function Read-ConsoleSelection {
 
     $interactive = Test-InteractiveConsole
     if (-not $interactive -and $Multiple) {
-        $picked = @(Read-ConsoleMultiChoice -Options $labels)
-        $final = @(foreach ($label in $picked) { [array]::IndexOf($labels, $label) })
+        # By index: two options with the same text are still two options.
+        $final = @(Read-ConsoleMultiChoice -Options $labels -ReturnIndex)
     }
     elseif (-not $interactive) {
         for ($i = 0; $i -lt $count; $i++) {

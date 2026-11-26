@@ -8,6 +8,24 @@ $script:LocaleResources = @{}
 $script:ActiveLocale = $null
 $script:FallbackLocale = 'en-US'
 
+function Resolve-UILocaleName {
+    <#
+    .SYNOPSIS
+        The loaded locale for a culture name: the same name, or else one of the same language
+        (es-MX uses es-ES), or $null.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([string]$Name)
+
+    if ([string]::IsNullOrEmpty($Name)) { return $null }
+    foreach ($loaded in $script:LocaleResources.Keys) { if ($loaded -ieq $Name) { return $loaded } }
+    $language = ($Name -split '-')[0]
+    $sameLanguage = @($script:LocaleResources.Keys | Where-Object { ($_ -split '-')[0] -ieq $language } | Sort-Object)
+    if ($sameLanguage.Count) { return $sameLanguage[0] }
+    return $null
+}
+
 function Initialize-Localization {
     <#
     .SYNOPSIS
@@ -20,7 +38,8 @@ function Initialize-Localization {
         Optional path to the locales directory. Defaults to config/locales relative to module root.
 
     .PARAMETER DefaultLocale
-        Optional default locale to use. If not specified, uses system culture.
+        Optional default locale to use. If not specified, uses system culture. A culture without its own
+        file uses one of the same language (es-MX uses es-ES), and otherwise en-US.
 
     .EXAMPLE
         Initialize-Localization
@@ -68,8 +87,10 @@ function Initialize-Localization {
         Write-Warning "Locale path not found: $LocalePath"
     }
 
-    # Verify active locale is available, fallback if not
-    if (-not $script:LocaleResources.ContainsKey($script:ActiveLocale)) {
+    # The same locale, or one of the same language, or the fallback.
+    $resolved = Resolve-UILocaleName -Name $script:ActiveLocale
+    if ($resolved) { $script:ActiveLocale = $resolved }
+    else {
         Write-Verbose "Active locale '$script:ActiveLocale' not found, using fallback '$script:FallbackLocale'"
         $script:ActiveLocale = $script:FallbackLocale
     }
@@ -141,8 +162,9 @@ function Get-LocalizedString {
     $value = $resource
 
     foreach ($k in $keys) {
-        if ($value -is [PSCustomObject] -and (Get-Member -InputObject $value -Name $k -MemberType NoteProperty)) {
-            $value = $value.$k
+        $property = if ($value -is [PSCustomObject]) { $value.PSObject.Properties[$k] } else { $null }
+        if ($null -ne $property) {
+            $value = $property.Value
         } else {
             Write-Verbose "Key '$Key' not found in locale '$targetLocale'"
             # Try fallback locale if we haven't already
@@ -166,7 +188,8 @@ function Set-UILocale {
         (have a corresponding JSON file loaded).
 
     .PARAMETER Locale
-        The locale code to activate (e.g., "en-US", "es-ES", "fr-FR").
+        The locale code to activate (e.g., "en-US", "es-ES", "fr-FR"). A code without its own file uses one
+        of the same language: "es-MX" or "es" activates "es-ES".
 
     .EXAMPLE
         Set-UILocale -Locale "es-ES"
@@ -180,10 +203,11 @@ function Set-UILocale {
         [string]$Locale
     )
 
-    if ($script:LocaleResources.ContainsKey($Locale)) {
-        if (-not $PSCmdlet.ShouldProcess("locale '$Locale'", 'Set active UI locale')) { return }
-        $script:ActiveLocale = $Locale
-        Write-Verbose "Active locale changed to: $Locale"
+    $resolved = Resolve-UILocaleName -Name $Locale
+    if ($resolved) {
+        if (-not $PSCmdlet.ShouldProcess("locale '$resolved'", 'Set active UI locale')) { return }
+        $script:ActiveLocale = $resolved
+        Write-Verbose "Active locale changed to: $resolved"
     } else {
         $available = $script:LocaleResources.Keys -join ', '
         throw "Locale '$Locale' not available. Available locales: $available"

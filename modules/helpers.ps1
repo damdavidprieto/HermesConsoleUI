@@ -3,6 +3,13 @@
 # Used by the public components: safe console output, theme and locale lookups,
 # text centering, icons and the layout column merge. Nothing here is exported.
 
+# Any character ConvertTo-ConsoleSafeText removes or changes: C0 and C1 controls except line feed and tab.
+# Escape sequences start with ESC (0x1B) or CSI (0x9B), so text without these has nothing to clean.
+$script:HermesControlRegex = [regex]::new('[\x00-\x08\x0B-\x1F\x7F-\x9F]', 'CultureInvariant')
+
+# The roles every theme defines; components ask for colors by role (see Resolve-UIColor).
+$script:HermesColorRoles = @('Primary', 'Secondary', 'Success', 'Warning', 'Error', 'Info', 'Muted', 'Highlight')
+
 function ConvertTo-ConsoleSafeText {
     <#
     .SYNOPSIS
@@ -20,7 +27,8 @@ function ConvertTo-ConsoleSafeText {
     [OutputType([string])]
     param([AllowNull()][AllowEmptyString()][string]$Text)
 
-    if ([string]::IsNullOrEmpty($Text)) { return $Text }
+    # Most text has no control character at all: nothing to remove.
+    if ([string]::IsNullOrEmpty($Text) -or -not $script:HermesControlRegex.IsMatch($Text)) { return $Text }
     $clean = $Text -replace '\x1B\][^\x07\x1B]*(\x07|\x1B\\)?', ''            # OSC ... BEL / ST
     $clean = $clean -replace '(\x1B\[|\x9B)[0-?]*[ -/]*[@-~]', ''             # CSI ... final byte
     $clean = $clean -replace '\x1B[@-_]?', ''                                 # other ESC sequences
@@ -51,9 +59,15 @@ function Write-HermesHost {
     )
 
     if ($PSBoundParameters.ContainsKey('Object')) {
-        $PSBoundParameters['Object'] = @($Object | ForEach-Object { ConvertTo-ConsoleSafeText -Text ([string]$_) })
+        # A loop instead of a pipeline: this runs for every piece of text the module writes.
+        $clean = [object[]]::new($Object.Count)
+        for ($i = 0; $i -lt $Object.Count; $i++) {
+            $text = [string]$Object[$i]
+            $clean[$i] = if ($script:HermesControlRegex.IsMatch($text)) { ConvertTo-ConsoleSafeText -Text $text } else { $text }
+        }
+        $PSBoundParameters['Object'] = $clean
     }
-    if (Test-NoColor) {
+    if (-not [string]::IsNullOrEmpty($env:NO_COLOR)) {
         $null = $PSBoundParameters.Remove('ForegroundColor')
         $null = $PSBoundParameters.Remove('BackgroundColor')
     }
@@ -285,7 +299,7 @@ function Merge-LayoutColumn {
     }
 
     $expectedTotal = ($Widths | Measure-Object -Sum).Sum + (($Columns.Count - 1) * 2)
-    $mergedLines = @()
+    $mergedLines = [System.Collections.Generic.List[string]]::new()
     for ($i = 0; $i -lt $maxLines; $i++) {
         $line = ''
         for ($c = 0; $c -lt $Columns.Count; $c++) {
@@ -306,9 +320,9 @@ function Merge-LayoutColumn {
 
         # Pad the whole line so it overwrites any longer line left on screen.
         $finalLine = $line.TrimEnd()
-        $mergedLines += ($finalLine + (' ' * [Math]::Max(0, ($expectedTotal - $finalLine.Length))))
+        $mergedLines.Add($finalLine + (' ' * [Math]::Max(0, ($expectedTotal - $finalLine.Length))))
     }
-    return $mergedLines
+    return $mergedLines.ToArray()
 }
 
 function Get-ComponentIcon {

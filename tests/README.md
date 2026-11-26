@@ -10,6 +10,7 @@ PowerShell 7 on Windows, Linux and macOS.
 | `Unit/Security.Tests.ps1` | Removal of terminal escape sequences and validation of menu input. |
 | `Unit/Manifest.Tests.ps1` | Exports and source file encoding (UTF-8 with BOM for non-ASCII files). |
 | `Unit/Examples.Tests.ps1` | Runs the non-interactive scripts in `examples/`. |
+| `Unit/Robustness.Tests.ps1` | Partial configuration files, locales by language, input that runs out, trees, tables and layouts. |
 
 ```powershell
 Invoke-Pester -Path ./tests                      # everything

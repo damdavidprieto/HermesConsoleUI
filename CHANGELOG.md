@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-11-26
+
+### Added
+- **`Write-ConsoleTree -ReturnLines`**, so a tree can go inside a panel or a layout column.
+- **`Read-ConsoleMultiChoice -ReturnIndex`**: the indexes of the chosen options, so options with the same
+  text can be told apart.
+- **Themes from the configuration file**: any theme in the `ColorScheme` section of `ui_config.json` can be
+  activated with `Set-ConsoleTheme` (tab completion lists them). Before, only the four built-in names were
+  accepted.
+- **Locales by language**: a culture without its own file uses one of the same language, so `es-MX` uses
+  `es-ES` and `fr-CA` uses `fr-FR`, at start-up and with `Set-UILocale` (which also accepts `es` or `fr`).
+
+### Changed
+- **Faster output**: text without control characters is no longer run through the escape-sequence filter,
+  the text of each table cell is cleaned once, and locale lookups no longer call `Get-Member`. Measured on
+  Windows: a 1,000-row table takes 155 ms instead of 530 in PowerShell 7 and 215 ms instead of 1,380 in
+  Windows PowerShell 5.1; titles, trees and colored text take about 40% less, a status line about 25% less.
+- **A configuration file only needs the settings it changes**: it is merged over the built-in ones. A theme
+  that leaves out some roles takes them from Default.
+- `config/ui_config.json` only has the settings the module reads (themes, the status icons of `Get-UIIcon`
+  and `Table.MaxColumnWidth`). The `Version` setting and the `Title`, `Header`, `Box`, `Chart`, `Tree`,
+  `Menu` and `Progress` sections were never read: changing them did nothing.
+
+### Fixed
+- **`Write-ConsoleTree`** draws the last item of each level with a corner (`└──`) and the others with a tee,
+  and the vertical line stops after the last branch. Before, every branch had a tee, every leaf a corner,
+  and the line went on under the last branch.
+- **`Read-ConsoleInput`** no longer asks forever when redirected input has ended: it returns the default
+  value, or an empty answer when that is valid, and otherwise throws.
+- **`Read-ConsoleSelection -Multiple`** without an interactive console returned the first of two options
+  with the same text twice; it now returns both.
+- **`Write-ConsoleLayout`**: a line break in the text of a column starts a new line, instead of being
+  written as a space.
+- `Set-ConsoleTheme -ThemeName Custom` after a configuration file failed to load changed the built-in
+  settings, so the custom theme stayed after loading the configuration again.
+
 ## [2.5.0] - 2026-11-22
 
 ### Added

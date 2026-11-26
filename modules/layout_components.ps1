@@ -73,8 +73,8 @@ function New-ConsoleColumn {
         Creates a layout column with its content and width.
 
     .DESCRIPTION
-        Returns a column object for New-ConsoleRow. The content can be a string, an array of
-        lines, or a script block. A script block is called with -Width (the column width in
+        Returns a column object for New-ConsoleRow. The content can be a string (line breaks start
+        new lines), an array of lines, or a script block. A script block is called with -Width (the column width in
         characters) and -ReturnLines, and must return the lines to show: components such as
         Show-ConsoleList, Write-ConsoleChart and Write-ConsoleBox support -ReturnLines.
 
@@ -153,7 +153,8 @@ function Write-ConsoleLayout {
                 }
             }
             elseif ($null -ne $col.Content) {
-                $lines = @($col.Content | ForEach-Object { [string]$_ })
+                # A line break in the text starts a new line in the column.
+                $lines = @($col.Content | ForEach-Object { ([string]$_) -split '\r?\n' })
             }
 
             if ($lines.Count -eq 0) { $lines = @('') }
