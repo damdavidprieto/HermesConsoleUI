@@ -1,6 +1,6 @@
 @{
     RootModule           = 'HermesConsoleUI.psm1'
-    ModuleVersion        = '2.8.0'
+    ModuleVersion        = '2.9.0'
     CompatiblePSEditions = @('Desktop', 'Core')
     GUID                 = 'a7f3e8d2-4c91-4b5a-9e7f-2d8c3a1b6e4f'
     Author               = 'David Prieto'
@@ -91,6 +91,9 @@
         'Wait-ConsoleKey'
         'Enable-ConsoleHostRedirect'
         'Disable-ConsoleHostRedirect'
+        'Enable-ConsoleSimulation'
+        'Disable-ConsoleSimulation'
+        'Invoke-ConsoleSimulation'
     )
     CmdletsToExport      = @()
     VariablesToExport    = @()

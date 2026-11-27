@@ -132,7 +132,10 @@ function Show-ConsoleMenu {
 }
 
 # True when input comes from a file or pipe, so Read-Host returning $null means it has ended.
-function Test-HermesInputRedirected { return [Console]::IsInputRedirected }
+function Test-HermesInputRedirected {
+    if ($script:HermesSimulation) { return $true }
+    return [Console]::IsInputRedirected
+}
 
 function Read-ConsoleChoice {
     <#
@@ -234,7 +237,7 @@ function Read-ConsoleChoice {
     $shown = if ($DefaultChoice -ge 0) { "$Prompt [$DefaultChoice]: " } else { "${Prompt}: " }
     while ($true) {
         Write-HermesHost $shown -NoNewline -ForegroundColor (Resolve-UIColor -Role Primary)
-        $raw = Read-Host
+        $raw = Read-HermesHost
         # $null: the input has ended (a redirected file or pipe). Asking again would loop forever.
         if ($null -eq $raw -and (Test-HermesInputRedirected)) {
             Write-HermesHost ''
@@ -282,7 +285,7 @@ function Read-ConsoleWordChoice {
 
     while ($true) {
         Write-HermesHost $shown -NoNewline -ForegroundColor (Resolve-UIColor -Role Primary)
-        $raw = Read-Host
+        $raw = Read-HermesHost
         if ($null -eq $raw -and (Test-HermesInputRedirected)) {
             Write-HermesHost ''
             if ($default) { return $default }
@@ -351,7 +354,7 @@ function Invoke-ConsoleMenu {
 
         Write-HermesHost ''
         Write-HermesHost ('  ' + $pressEnter) -ForegroundColor (Resolve-UIColor -Role Muted)
-        $null = Read-Host
+        $null = Read-HermesHost
     }
 }
 
@@ -399,7 +402,7 @@ function Read-ConsoleMultiChoice {
         Write-HermesHost ('    [' + ($i + 1) + '] ' + $Options[$i])
     }
 
-    $val = Read-Host '    > '
+    $val = Read-HermesHost -Prompt '    > '
     Send-HermesAnswer ('    > ' + [string]$val)
     if (-not $val) { return @() }
 
@@ -608,6 +611,10 @@ function Read-ConsoleInput {
     .PARAMETER ErrorMessage
         Message shown when the answer is not valid. Defaults to the locale's "Invalid value. Try again."
 
+    .PARAMETER NoColon
+        Do not add ": " after the prompt, only a space. It is never added when the prompt already ends with
+        ":", "?" or ">".
+
     .EXAMPLE
         $port = Read-ConsoleInput -Prompt "Port" -DefaultValue "8080"
 
@@ -637,20 +644,32 @@ function Read-ConsoleInput {
 
         [scriptblock]$Validate,
 
-        [string]$ErrorMessage
+        [string]$ErrorMessage,
+
+        [switch]$NoColon
     )
 
     if (-not $Prompt) { $Prompt = Get-UIText -Key 'Input.Prompt' -Default '[?]' }
     if (-not $ErrorMessage) { $ErrorMessage = Get-UIText -Key 'Input.Invalid' -Default 'Invalid value. Try again.' }
     $hasDefault = $PSBoundParameters.ContainsKey('DefaultValue')
     if ($hasDefault -and $DefaultValue) { $Prompt = "$Prompt [$DefaultValue]" }
+    # Read-Host always adds ": ". A prompt that already ends in a colon, a question mark or ">" is written by
+    # the module instead, followed by a space (the handler gets it with the answer, not twice).
+    $ownPrompt = $NoColon -or $Prompt.TrimEnd() -match '[:?>]$'
+    $shownPrompt = if ($ownPrompt) { $Prompt.TrimEnd() + ' ' } else { "${Prompt}: " }
 
     while ($true) {
-        $answer = Read-Host -Prompt $Prompt
+        if ($ownPrompt) {
+            $paused = $script:HermesHandlerPaused
+            $script:HermesHandlerPaused = $true
+            try { Write-HermesHost $shownPrompt -NoNewline } finally { $script:HermesHandlerPaused = $paused }
+            $answer = Read-HermesHost
+        }
+        else { $answer = Read-HermesHost -Prompt $Prompt }
         # $null: the input has ended (a redirected file or pipe). Asking again would loop forever.
         $ended = $null -eq $answer -and (Test-HermesInputRedirected)
         if ($hasDefault -and [string]::IsNullOrEmpty($answer)) { $answer = $DefaultValue }
-        Send-HermesAnswer ("${Prompt}: " + [string]$answer)
+        Send-HermesAnswer ($shownPrompt + [string]$answer)
 
         $valid = $true
         if ([string]::IsNullOrEmpty($answer)) { $valid = -not $Required }
@@ -707,7 +726,7 @@ function Read-ConsoleConfirmation {
         $hint = if ($Default) { "($($matches[1].ToUpperInvariant())/$($matches[2].ToLowerInvariant()))" } else { "($($matches[1].ToLowerInvariant())/$($matches[2].ToUpperInvariant()))" }
     }
 
-    $raw = "$(Read-Host "$Message $hint")".Trim()
+    $raw = "$(Read-HermesHost -Prompt "$Message $hint")".Trim()
     $response = $raw.ToLowerInvariant()
     $result = if ($response.Length -eq 0) { $hasDefault -and $Default } else { $yes -contains $response.Substring(0, 1) }
     # A capture keeps the question with its answer: what was typed, or the default letter for Enter.
@@ -741,7 +760,7 @@ function Read-ConsolePassword {
         [string]$Prompt = 'Password'
     )
 
-    $secure = Read-Host -Prompt $Prompt -AsSecureString
+    $secure = Read-HermesHost -Prompt $Prompt -AsSecureString
     # A capture shows that something was typed, never what or how long.
     Send-HermesAnswer ("${Prompt}: " + $(if ($secure -and $secure.Length) { '********' } else { '' }))
     return $secure
@@ -1001,7 +1020,7 @@ function Read-ConsoleSelectionKey {
     try {
         & $render
         while ($true) {
-            $key = & $script:HermesReadKey
+            $key = Read-HermesKey
             $redraw = $true
             $shown = $state.Visible.Count
             $typed = [string]$key.KeyChar

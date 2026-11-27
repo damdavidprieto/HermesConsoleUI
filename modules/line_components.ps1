@@ -414,6 +414,32 @@ function ConvertTo-HermesSegment {
     return $s
 }
 
+function Assert-HermesSegmentList {
+    <#
+    .SYNOPSIS
+        Fails when the segments look like array segments merged into one list.
+    .DESCRIPTION
+        PowerShell joins the arrays written one per line inside @( ... ) into one list: @( @('a', 'Red')
+        @('b', 'Green') ) becomes 'a', 'Red', 'b', 'Green', and the color names would be written as text. A
+        plain text segment that is a color name, a theme role or #RRGGBB right after another plain value is
+        taken as that mistake. Write color names as text with @{ Text = 'Red' }.
+    #>
+    param([object[]]$Segments)
+
+    $previousPlain = $false
+    for ($i = 0; $i -lt $Segments.Count; $i++) {
+        $segment = $Segments[$i]
+        $plain = $null -ne $segment -and ($segment -is [string] -or $segment -is [ValueType])
+        if ($plain -and $previousPlain -and $segment -is [string] -and
+            ($script:HermesConsoleColorName.ContainsKey($segment) -or $script:HermesColorRoles -contains $segment -or $segment -match '^#[0-9A-Fa-f]{6}$')) {
+            throw [System.ArgumentException]::new(("Segment {0} is the color '{1}' as text: the array segments were probably merged into one list. " +
+                    "Write each array segment with a comma, ,@('text', '{1}'), or as a hashtable, @{{ Text = 'text'; Color = '{1}' }}. " +
+                    "To write a color name as text, use @{{ Text = '{1}' }}.") -f ($i, $segment))
+        }
+        $previousPlain = $plain
+    }
+}
+
 function ConvertTo-HermesLine {
     <#
     .SYNOPSIS
@@ -430,6 +456,7 @@ function ConvertTo-HermesLine {
         [switch]$CutLast
     )
 
+    Assert-HermesSegmentList -Segments $Segments
     $parts = [System.Collections.Generic.List[hashtable]]::new()
     foreach ($segment in @($Segments)) { if ($null -ne $segment) { $parts.Add((ConvertTo-HermesSegment -Segment $segment)) } }
     if ($CutLast -and $parts.Count -and $parts[$parts.Count - 1].Width -le 0 -and $parts[$parts.Count - 1].Fill -eq 'None' -and $null -eq $parts[$parts.Count - 1].Bar) {
@@ -519,6 +546,9 @@ function Write-ConsoleLine {
                     the value of a full bar (100) and Empty the color of the rest.
         $null segments are skipped, so a segment can depend on a condition: $(if ($risk) { @{ ... } }).
         The text is written safely, as everywhere in the module, and is never read for color marks.
+        Array segments written one per line inside @( ) are merged by PowerShell into one flat list, so the
+        module refuses a color name found as text right after another text segment: write each array with a
+        comma in front, ,@('text', 'Red'), or as a hashtable, @{ Text = 'text'; Color = 'Red' }.
         Where the terminal supports virtual terminal sequences (PowerShell 7 in Windows Terminal, and most
         consoles), each line is written in one call, which is faster and keeps lines whole.
 
@@ -600,7 +630,8 @@ function Write-ConsoleKeyValue {
         The labels and values.
 
     .PARAMETER LabelWidth
-        Width of the label column. 0 (the default) is the width of the longest label.
+        Width of the label column. 0 (the default) is the width of the longest label, at most half the line;
+        a width given is kept as long as 10 columns are left for the values. Longer labels are cut with "…".
 
     .PARAMETER LabelColor
         Color of the labels. Defaults to the theme's Muted color.
@@ -691,7 +722,9 @@ function Write-ConsoleKeyValue {
     if ($width -le 0) { foreach ($row in $rows) { $width = [Math]::Max($width, (Measure-ConsoleText -Text $row[0])) } }
     $lineWidth = Get-HermesLineWidth
     $margin = Get-HermesMargin -Indent $Indent
-    $width = [Math]::Min($width, [Math]::Max(4, [int](($lineWidth - $margin) / 2)))
+    # An automatic width is at most half the line; a width asked for is kept while the values still get 10 columns.
+    $limit = if ($LabelWidth -gt 0) { $lineWidth - $margin - $Gap - 10 } else { [int](($lineWidth - $margin) / 2) }
+    $width = [Math]::Min($width, [Math]::Max(4, $limit))
     $defaultLabel = if ($LabelColor) { $LabelColor } else { 'Muted' }
 
     $out = [System.Collections.Generic.List[object]]::new()
@@ -863,6 +896,191 @@ function Stop-ConsoleCapture {
     }
 }
 
+# --- Simulated console, for tests ----------------------------------------------------------------------------
+
+$script:HermesSimulation = $null
+
+function Read-HermesHost {
+    <#
+    .SYNOPSIS
+        Read-Host, or the next simulated answer while Enable-ConsoleSimulation is on ($null when they run out).
+    .DESCRIPTION
+        A simple function so that the parameters are passed to Read-Host only when given, as before.
+    #>
+    param([string]$Prompt, [switch]$AsSecureString)
+
+    if ($script:HermesSimulation) {
+        $queue = $script:HermesSimulation.Answers
+        $answer = if ($queue.Count) { $queue.Dequeue() } else { $null }
+        if (-not $AsSecureString -or $null -eq $answer) { return $answer }
+        $secure = [System.Security.SecureString]::new()
+        foreach ($c in $answer.ToCharArray()) { $secure.AppendChar($c) }
+        $secure.MakeReadOnly()
+        return $secure
+    }
+    if ($AsSecureString) {
+        if ($PSBoundParameters.ContainsKey('Prompt')) { return (Read-Host -Prompt $Prompt -AsSecureString) }
+        return (Read-Host -AsSecureString)
+    }
+    if ($PSBoundParameters.ContainsKey('Prompt')) { return (Read-Host -Prompt $Prompt) }
+    return (Read-Host)
+}
+
+function Read-HermesKey {
+    <#
+    .SYNOPSIS
+        The next key: simulated while Enable-ConsoleSimulation is on (Escape when they run out), otherwise
+        from $script:HermesReadKey (the console).
+    #>
+    if ($script:HermesSimulation) {
+        $queue = $script:HermesSimulation.Keys
+        if ($queue.Count) { return $queue.Dequeue() }
+        return [System.ConsoleKeyInfo]::new([char]27, [System.ConsoleKey]::Escape, $false, $false, $false)
+    }
+    return (& $script:HermesReadKey)
+}
+
+function ConvertTo-HermesKey {
+    <#
+    .SYNOPSIS
+        A ConsoleKeyInfo from a ConsoleKeyInfo, a [char], a [ConsoleKey], a one-character string or a key name.
+    #>
+    param($Key)
+
+    if ($Key -is [System.ConsoleKeyInfo]) { return $Key }
+    $special = @{ Enter = [char]13; Escape = [char]27; Backspace = [char]8; Tab = [char]9; Spacebar = ' ' }
+    if ($Key -is [System.ConsoleKey] -or ($Key -is [string] -and $Key.Length -gt 1)) {
+        $name = [System.ConsoleKey]$Key
+        $char = if ($special.ContainsKey([string]$name)) { [char]$special[[string]$name] } else { [char]0 }
+        return [System.ConsoleKeyInfo]::new($char, $name, $false, $false, $false)
+    }
+    $c = [char]([string]$Key)
+    $consoleKey = [System.ConsoleKey]::NoName
+    if ($c -match '[A-Za-z]') { $consoleKey = [System.ConsoleKey]([string]$c).ToUpperInvariant() }
+    elseif ($c -match '[0-9]') { $consoleKey = [System.ConsoleKey]("D$c") }
+    else { foreach ($n in $special.Keys) { if ([char]$special[$n] -eq $c) { $consoleKey = [System.ConsoleKey]$n } } }
+    return [System.ConsoleKeyInfo]::new($c, $consoleKey, $false, $false, $false)
+}
+
+function Enable-ConsoleSimulation {
+    <#
+    .SYNOPSIS
+        Makes the prompts read simulated keys and answers, for tests of scripts that use the module.
+
+    .DESCRIPTION
+        From now on, the prompts that read keys (Read-ConsoleSelection, Read-ConsoleMenu and the arrow-key lists)
+        take them from -KeyPresses (-Keys), and the prompts that read a line (Read-ConsoleInput, Read-ConsoleChoice,
+        Read-ConsoleConfirmation, Read-ConsolePassword, Wait-ConsoleKey and the typed menus) take them from
+        -Answers, in order. When the keys run out, Escape is read; when the answers run out, the input has
+        ended, as with a redirected file: each prompt returns its default or fails, never waits.
+        The console counts as interactive (arrow keys), or not with -NonInteractive (options listed and the
+        key typed). Captures and output handlers receive the questions and answers as usual.
+        Disable-ConsoleSimulation ends it; Invoke-ConsoleSimulation runs a script block with it and ends it.
+        Enabling it again replaces the keys and answers.
+
+    .PARAMETER KeyPresses
+        Keys to read (also -Keys): [ConsoleKeyInfo], [char], [ConsoleKey], one-character strings ('2') or key names
+        ('Enter', 'DownArrow', 'Escape', 'Backspace', 'Spacebar').
+
+    .PARAMETER Answers
+        Lines to read, in order.
+
+    .PARAMETER NonInteractive
+        Behave as a console where keys cannot be read: menus list their options and read the typed key.
+
+    .EXAMPLE
+        Enable-ConsoleSimulation -Keys 'DownArrow', 'Enter'
+        $pick = Read-ConsoleMenu -Items ([ordered]@{ a = 'Audit'; r = 'Repair' })
+        Disable-ConsoleSimulation
+
+        $pick is 'r'.
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
+    param(
+        [Alias('Keys')]
+        [AllowEmptyCollection()]
+        [object[]]$KeyPresses = @(),
+
+        [AllowEmptyCollection()]
+        [AllowNull()]
+        [string[]]$Answers = @(),
+
+        [switch]$NonInteractive
+    )
+
+    if (-not $PSCmdlet.ShouldProcess('HermesConsoleUI input', 'Simulate keys and answers')) { return }
+    $keyQueue = [System.Collections.Generic.Queue[System.ConsoleKeyInfo]]::new()
+    foreach ($k in @($KeyPresses)) { if ($null -ne $k) { $keyQueue.Enqueue((ConvertTo-HermesKey -Key $k)) } }
+    $answerQueue = [System.Collections.Generic.Queue[string]]::new()
+    foreach ($a in @($Answers)) { $answerQueue.Enqueue([string]$a) }
+    $script:HermesSimulation = @{ Keys = $keyQueue; Answers = $answerQueue; Interactive = -not $NonInteractive }
+}
+
+function Disable-ConsoleSimulation {
+    <#
+    .SYNOPSIS
+        Ends the simulation started with Enable-ConsoleSimulation: prompts read the real console again.
+
+    .DESCRIPTION
+        Keys and answers that were not read are discarded. Nothing happens when no simulation is on.
+
+    .EXAMPLE
+        Disable-ConsoleSimulation
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
+    param()
+
+    if (-not $PSCmdlet.ShouldProcess('HermesConsoleUI input', 'Stop simulating keys and answers')) { return }
+    $script:HermesSimulation = $null
+}
+
+function Invoke-ConsoleSimulation {
+    <#
+    .SYNOPSIS
+        Runs a script block with simulated keys and answers, and ends the simulation afterwards.
+
+    .DESCRIPTION
+        The same as Enable-ConsoleSimulation, the script block and Disable-ConsoleSimulation, with the simulation
+        ended even when the script block fails. Returns what the script block returns.
+
+    .PARAMETER ScriptBlock
+        The code to run.
+
+    .PARAMETER KeyPresses
+        Keys to read (see Enable-ConsoleSimulation); also -Keys.
+
+    .PARAMETER Answers
+        Lines to read, in order.
+
+    .PARAMETER NonInteractive
+        Behave as a console where keys cannot be read.
+
+    .EXAMPLE
+        $answers = Invoke-ConsoleSimulation -Answers '', 'yes' { Read-ConsoleConfirmation 'Go on?' -Default $true; Read-ConsoleConfirmation 'Delete?' }
+
+        Returns $true (Enter takes the default) and $true.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [scriptblock]$ScriptBlock,
+
+        [Alias('Keys')]
+        [AllowEmptyCollection()]
+        [object[]]$KeyPresses = @(),
+
+        [AllowEmptyCollection()]
+        [AllowNull()]
+        [string[]]$Answers = @(),
+
+        [switch]$NonInteractive
+    )
+
+    Enable-ConsoleSimulation -KeyPresses $KeyPresses -Answers $Answers -NonInteractive:$NonInteractive -Confirm:$false
+    try { & $ScriptBlock }
+    finally { Disable-ConsoleSimulation -Confirm:$false }
+}
+
 # --- Waiting and Write-Host ----------------------------------------------------------------------------------
 
 function Wait-ConsoleKey {
@@ -886,7 +1104,7 @@ function Wait-ConsoleKey {
     if (-not $Message) { $Message = Get-UIText -Key 'Menu.PressEnter' -Default 'Press Enter to continue...' }
     Write-HermesHost ''
     Write-HermesHost ((' ' * (Get-HermesMargin)) + $Message + ' ') -NoNewline -ForegroundColor (Resolve-UIColor -Role Muted)
-    $null = Read-Host
+    $null = Read-HermesHost
     Send-HermesAnswer -Text ''
 }
 

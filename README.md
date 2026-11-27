@@ -60,7 +60,7 @@ interactive menu. Each example runs as part of the tests.
 | Text | `Write-ConsoleText`, `Format-ConsoleText`, `Measure-ConsoleText`, `Get-ConsoleWidth`, `Clear-ConsoleScreen`, `Register-ConsoleOutputHandler`, `Unregister-ConsoleOutputHandler`, `Write-ConsoleTitle`, `Write-ConsoleHeader`, `Write-ConsoleSubtitle`, `Write-ConsoleStatus`, `Write-ConsoleInfo`, `Write-ConsoleError`, `Write-ConsoleMetadata`, `Write-ConsoleSummary`, `Write-ConsoleDiff`, `Write-ConsoleSeparator`, `Write-ConsoleBreadcrumb` |
 | Data | `Write-ConsoleTable`, `Show-ConsoleList`, `Write-ConsoleTree`, `Write-ConsoleChart`, `Write-ConsoleSparkline`, `Write-ConsoleBox`, `Write-ConsolePanel` |
 | Interaction | `Read-ConsoleSelection`, `Read-ConsoleMenu`, `Show-ConsoleMenu`, `Read-ConsoleChoice`, `Invoke-ConsoleMenu`, `Read-ConsoleMultiChoice`, `Read-ConsoleInput`, `Read-ConsoleConfirmation`, `Read-ConsolePassword`, `Invoke-ConsoleSpinner`, `Write-ConsoleStatusLine`, `Clear-ConsoleStatusLine`, `Show-ConsoleProgress`, `Write-ConsoleProgress`, `Show-ConsoleNotification` |
-| Lines | `Write-ConsoleLine`, `Write-ConsoleKeyValue`, `Write-ConsoleGrid`, `Register-ConsoleStyle`, `Get-ConsoleStyle`, `Unregister-ConsoleStyle`, `Set-ConsoleLayout`, `Get-ConsoleLayout`, `Start-ConsoleCapture`, `Stop-ConsoleCapture`, `Wait-ConsoleKey`, `Enable-ConsoleHostRedirect`, `Disable-ConsoleHostRedirect` |
+| Lines | `Write-ConsoleLine`, `Write-ConsoleKeyValue`, `Write-ConsoleGrid`, `Register-ConsoleStyle`, `Get-ConsoleStyle`, `Unregister-ConsoleStyle`, `Set-ConsoleLayout`, `Get-ConsoleLayout`, `Start-ConsoleCapture`, `Stop-ConsoleCapture`, `Wait-ConsoleKey`, `Enable-ConsoleHostRedirect`, `Disable-ConsoleHostRedirect`, `Enable-ConsoleSimulation`, `Disable-ConsoleSimulation`, `Invoke-ConsoleSimulation` |
 | Layout | `New-ConsoleLayout`, `New-ConsoleRow`, `New-ConsoleColumn`, `Write-ConsoleLayout` |
 | Themes | `Set-ConsoleTheme`, `Get-ConsoleTheme`, `Get-AvailableTheme`, `Get-UIColor`, `Get-UIIcon`, `Get-UIConfig`, `Initialize-UIConfig` |
 | Localization | `Set-UILocale`, `Get-UILocale`, `Get-AvailableLocale`, `Get-LocalizedString`, `Initialize-Localization` |
@@ -100,6 +100,7 @@ Wait-ConsoleKey
   `Color`, `Width`, `Align`, `Fill` (`Cut` or `Wrap`, the rest of the line), `Gap`, `Value` and `Style`, or
   `Bar`. A `$null` segment is skipped, so a segment can depend on a condition. A wrapped segment keeps its
   following lines under its start, after a label or a severity column.
+- Write array segments with a comma in front of each, `,@('Name', 'Red')`, or as hashtables: inside `@( )`, arrays written one per line are merged into one list, and `Write-ConsoleLine` refuses a color name found as text.
 - `Register-ConsoleStyle` names the text and color of each value; lines, key-value lists, table columns
   (`Style`) and charts (`-Style`) use it, and `Get-ConsoleStyle` returns them for anything else.
 - `Set-ConsoleLayout` sets the widest line, the margin and the width to use when the console width is
@@ -171,6 +172,19 @@ capture keeps each question with its answer. `Unregister-ConsoleOutputHandler` r
 for a copy of the script that runs elevated in another window; `Stop-ConsoleCapture` ends it. While
 capturing nothing is rewritten in place: prompts list their options and read the typed answer, so the file
 shows both.
+
+## Testing without a console
+
+`Invoke-ConsoleSimulation` runs a script block with keys and answers in place of the console, so the prompts can be tested:
+
+```powershell
+$pick = Invoke-ConsoleSimulation -KeyPresses 'DownArrow', 'Enter' { Read-ConsoleMenu -Items ([ordered]@{ a = 'Audit'; r = 'Repair' }) -Default a }
+$name = Invoke-ConsoleSimulation -Answers 'ana' { Read-ConsoleInput -Prompt 'Name:' }
+```
+
+Keys run out into Escape and answers into an ended input (a required input then throws), so a test never waits.
+`Enable-ConsoleSimulation` and `Disable-ConsoleSimulation` do the same around a group of tests. `-NonInteractive`
+behaves as a console without keys: the options are listed and the typed key is read.
 
 ## Tables
 
