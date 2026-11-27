@@ -1,4 +1,4 @@
-# Configuration files that leave settings out, locales by language, input that runs out, trees,
+﻿# Configuration files that leave settings out, locales by language, input that runs out, trees,
 # tables and layouts (2.6.0).
 
 BeforeAll {

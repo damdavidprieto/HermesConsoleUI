@@ -597,71 +597,110 @@ function Write-ConsoleTable {
             $Columns = @($rows[0].PSObject.Properties | ForEach-Object { @{ Header = $_.Name; Property = $_.Name } })
         }
         $Columns = @(Resolve-TableColumn -Columns $Columns -Rows $rows)
-        $ellipsis = [string][char]0x2026
-
         $header = -join @(foreach ($col in $Columns) { Format-TableCell -Value $col.Header -Width $col.Width -Align $col.Align })
         $rule = (-join @(foreach ($col in $Columns) { ('-' * ($col.Width - 1)) + ' ' })).TrimEnd()
 
-        # The cell texts were cleaned once by Resolve-TableColumn; here they are only cut and padded.
-        $cellText = {
-            param($col, [int]$r)
+        if ($ReturnLines) { return Get-TableText -Title $Title -Header $header -Rule $rule -Columns $Columns -RowCount $rows.Count }
+        Write-TableBody -Title $Title -Header $header -Rule $rule -Columns $Columns -Rows $rows -ColorMapProperty $ColorMapProperty -ColorMap $ColorMap
+    }
+}
+
+function Get-TableText {
+    <#
+    .SYNOPSIS
+        The lines of a table without colors: the title, the header, the rule and one line per row.
+    #>
+    [CmdletBinding()]
+    [OutputType([string[]])]
+    param([string]$Title, [string]$Header, [string]$Rule, [object[]]$Columns, [int]$RowCount)
+
+    $out = [System.Collections.Generic.List[string]]::new()
+    if ($Title) { $out.Add($Title) }
+    $out.Add($Header.TrimEnd())
+    $out.Add($Rule)
+    for ($r = 0; $r -lt $RowCount; $r++) {
+        $out.Add((-join @(foreach ($col in $Columns) { Get-TableCellText -Column $col -Row $r })).TrimEnd())
+    }
+    return $out.ToArray()
+}
+
+function Get-TableCellText {
+    <#
+    .SYNOPSIS
+        The text of one cell, cut with an ellipsis or padded to its column. Resolve-TableColumn cleaned the texts once.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param($Column, [int]$Row)
+
+    $ellipsis = [string][char]0x2026
+    $text = $Column.Texts[$Row]
+    $room = $Column.Width - 1
+    if ($Column.Wide) {
+        return (Format-ConsoleText -Text $text -Width $room -Align $(if ($Column.Align -eq 'Right') { 'Right' } else { 'Left' })) + ' '
+    }
+    if ($text.Length -gt $room) { $text = $text.Substring(0, $room - 1) + $ellipsis }
+    if ($Column.Align -eq 'Right') { return $text.PadLeft($room) + ' ' }
+    return $text.PadRight($Column.Width)
+}
+
+function Write-TableBody {
+    <#
+    .SYNOPSIS
+        Writes the title, the header, the rule and the rows of a table in the colors of the theme.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$Title,
+        [string]$Header,
+        [string]$Rule,
+        [object[]]$Columns,
+        $Rows,
+        [string]$ColorMapProperty,
+        [hashtable]$ColorMap
+    )
+
+    $ellipsis = [string][char]0x2026
+    $headerColor = Resolve-UIColor -Role Secondary
+    $rowColor = Resolve-UIColor -Role Highlight
+    $cellColors = @($Columns | Where-Object { $_.CellColors }).Count -gt 0
+
+    Write-HermesHost ''
+    if ($Title) { Write-HermesHost ('  ' + $Title) -ForegroundColor (Resolve-UIColor -Role Primary) }
+    Write-HermesHost ('  ' + $Header) -ForegroundColor $headerColor
+    Write-HermesHost ('  ' + $Rule) -ForegroundColor (Resolve-UIColor -Role Muted)
+
+    $line = [System.Text.StringBuilder]::new()
+    for ($r = 0; $r -lt $Rows.Count; $r++) {
+        $color = $rowColor
+        if ($ColorMapProperty) {
+            $key = [string]$Rows[$r].$ColorMapProperty
+            if ($ColorMap.ContainsKey($key)) { $color = $ColorMap[$key] }
+        }
+        if ($cellColors) {
+            # Cells with their own color: one write per cell.
+            Write-HermesHost '  ' -NoNewline
+            foreach ($col in $Columns) {
+                $cellColor = $color
+                if ($col.CellColors -and $col.CellColors[$r]) { $cellColor = $col.CellColors[$r] }
+                Write-HermesHost (Get-TableCellText -Column $col -Row $r) -NoNewline -ForegroundColor $cellColor
+            }
+            Write-HermesHost ''
+            continue
+        }
+        # The same as Get-TableCellText, written out: a function call per cell would double the time of a large table.
+        $null = $line.Clear().Append('  ')
+        foreach ($col in $Columns) {
+            if ($col.Wide) { $null = $line.Append((Get-TableCellText -Column $col -Row $r)); continue }
             $text = $col.Texts[$r]
             $room = $col.Width - 1
-            if ($col.Wide) { return (Format-ConsoleText -Text $text -Width $room -Align $(if ($col.Align -eq 'Right') { 'Right' } else { 'Left' })) + ' ' }
             if ($text.Length -gt $room) { $text = $text.Substring(0, $room - 1) + $ellipsis }
-            if ($col.Align -eq 'Right') { return $text.PadLeft($room) + ' ' }
-            return $text.PadRight($col.Width)
+            if ($col.Align -eq 'Right') { $null = $line.Append($text.PadLeft($room)).Append(' ') }
+            else { $null = $line.Append($text.PadRight($col.Width)) }
         }
-
-        if ($ReturnLines) {
-            $out = [System.Collections.Generic.List[string]]::new()
-            if ($Title) { $out.Add($Title) }
-            $out.Add($header.TrimEnd()); $out.Add($rule)
-            for ($r = 0; $r -lt $rows.Count; $r++) { $out.Add((-join @(foreach ($col in $Columns) { & $cellText $col $r })).TrimEnd()) }
-            return $out.ToArray()
-        }
-
-        $headerColor = Resolve-UIColor -Role Secondary
-        $rowColor = Resolve-UIColor -Role Highlight
-        $cellColors = @($Columns | Where-Object { $_.CellColors }).Count -gt 0
-
-        Write-HermesHost ''
-        if ($Title) { Write-HermesHost ('  ' + $Title) -ForegroundColor (Resolve-UIColor -Role Primary) }
-        Write-HermesHost ('  ' + $header) -ForegroundColor $headerColor
-        Write-HermesHost ('  ' + $rule) -ForegroundColor (Resolve-UIColor -Role Muted)
-
-        $line = [System.Text.StringBuilder]::new()
-        for ($r = 0; $r -lt $rows.Count; $r++) {
-            $color = $rowColor
-            if ($ColorMapProperty) {
-                $key = [string]$rows[$r].$ColorMapProperty
-                if ($ColorMap.ContainsKey($key)) { $color = $ColorMap[$key] }
-            }
-            if ($cellColors) {
-                # Cells with their own color: one write per cell.
-                Write-HermesHost '  ' -NoNewline
-                foreach ($col in $Columns) {
-                    $cellColor = $color
-                    if ($col.CellColors -and $col.CellColors[$r]) { $cellColor = $col.CellColors[$r] }
-                    Write-HermesHost (& $cellText $col $r) -NoNewline -ForegroundColor $cellColor
-                }
-                Write-HermesHost ''
-                continue
-            }
-            # The same as $cellText, written out: a script block call per cell would double the time of a large table.
-            $null = $line.Clear().Append('  ')
-            foreach ($col in $Columns) {
-                if ($col.Wide) { $null = $line.Append((& $cellText $col $r)); continue }
-                $text = $col.Texts[$r]
-                $room = $col.Width - 1
-                if ($text.Length -gt $room) { $text = $text.Substring(0, $room - 1) + $ellipsis }
-                if ($col.Align -eq 'Right') { $null = $line.Append($text.PadLeft($room)).Append(' ') }
-                else { $null = $line.Append($text.PadRight($col.Width)) }
-            }
-            Write-HermesHost $line.ToString() -ForegroundColor $color
-        }
-        Write-HermesHost ''
+        Write-HermesHost $line.ToString() -ForegroundColor $color
     }
+    Write-HermesHost ''
 }
 
 function Format-TableCell {

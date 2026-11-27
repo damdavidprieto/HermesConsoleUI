@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Builds HermesConsoleUI into output/HermesConsoleUI, ready to install or publish.
 

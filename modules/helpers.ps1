@@ -1,4 +1,4 @@
-# HermesConsoleUI - private helper functions.
+﻿# HermesConsoleUI - private helper functions.
 #
 # Used by the public components: safe console output, true color, theme and locale lookups,
 # text centering, icons and the layout column merge. Nothing here is exported.
@@ -66,7 +66,7 @@ function Write-HermesHost {
         $BackgroundColor
     )
 
-    if ($script:HermesStatusLineActive) { Clear-ConsoleStatusLine }
+    if ($script:HermesOutput.StatusLineActive) { Clear-ConsoleStatusLine }
     if ($PSBoundParameters.ContainsKey('Object')) {
         # A loop instead of a pipeline: this runs for every piece of text the module writes.
         $clean = [object[]]::new($Object.Count)
@@ -80,7 +80,7 @@ function Write-HermesHost {
         $null = $PSBoundParameters.Remove('ForegroundColor')
         $null = $PSBoundParameters.Remove('BackgroundColor')
     }
-    if (-not $script:HermesOutputQuiet) {
+    if (-not $script:HermesOutput.Quiet) {
         $codes = [System.Collections.Generic.List[string]]::new()
         foreach ($name in 'ForegroundColor', 'BackgroundColor') {
             $value = [string]$PSBoundParameters[$name]
@@ -102,7 +102,7 @@ function Write-HermesHost {
         Write-Host @PSBoundParameters
     }
 
-    if (($script:HermesOutputHandler -or $script:HermesCapture) -and -not $script:HermesHandlerPaused) {
+    if (($script:HermesOutput.Handler -or $script:HermesOutput.Capture) -and -not $script:HermesOutput.Paused) {
         $separator = if ($PSBoundParameters.ContainsKey('Separator')) { [string]$Separator } else { ' ' }
         $text = if ($PSBoundParameters.ContainsKey('Object')) { @($clean) -join $separator } else { '' }
         $color = if ($PSBoundParameters.ContainsKey('ForegroundColor') -or $ForegroundColor) { [string]$ForegroundColor } else { '' }
@@ -121,11 +121,11 @@ function Send-HermesOutput {
     [CmdletBinding()]
     param([AllowEmptyString()][string]$Text, [bool]$NoNewline, [AllowEmptyString()][string]$Color)
 
-    if ($script:HermesHandlerPaused) { return }
-    if ($script:HermesOutputHandler) {
-        try { & $script:HermesOutputHandler $Text $NoNewline $Color } catch { Write-Verbose "Output handler failed: $($_.Exception.Message)" }
+    if ($script:HermesOutput.Paused) { return }
+    if ($script:HermesOutput.Handler) {
+        try { & $script:HermesOutput.Handler $Text $NoNewline $Color } catch { Write-Verbose "Output handler failed: $($_.Exception.Message)" }
     }
-    $capture = $script:HermesCapture
+    $capture = $script:HermesOutput.Capture
     if ($capture) {
         $null = $capture.Line.Append($Text)
         if (-not $NoNewline) {
@@ -157,7 +157,7 @@ function Write-HermesSegment {
     param([AllowEmptyCollection()][object[]]$Segments, [switch]$NoNewline)
 
     $noColor = -not [string]::IsNullOrEmpty($env:NO_COLOR)
-    $vt = -not $noColor -and -not $script:HermesOutputQuiet -and (Test-HermesTrueColor)
+    $vt = -not $noColor -and -not $script:HermesOutput.Quiet -and (Test-HermesTrueColor)
     if (-not $vt -and -not $noColor) {
         foreach ($segment in $Segments) {
             if ($segment[1]) { Write-HermesHost $segment[0] -NoNewline -ForegroundColor $segment[1] } else { Write-HermesHost $segment[0] -NoNewline }
@@ -166,7 +166,7 @@ function Write-HermesSegment {
         return
     }
 
-    if ($script:HermesStatusLineActive) { Clear-ConsoleStatusLine }
+    if ($script:HermesOutput.StatusLineActive) { Clear-ConsoleStatusLine }
     $esc = [char]27
     $line = [System.Text.StringBuilder]::new()
     $current = $null
@@ -187,19 +187,17 @@ function Write-HermesSegment {
         $null = $line.Append($text)
     }
     if ($vt -and $current) { $null = $line.Append("$esc[0m") }
-    if (-not $script:HermesOutputQuiet) { Write-Host $line.ToString() -NoNewline:$NoNewline }
-    if (($script:HermesOutputHandler -or $script:HermesCapture) -and -not $script:HermesHandlerPaused) {
+    if (-not $script:HermesOutput.Quiet) { Write-Host $line.ToString() -NoNewline:$NoNewline }
+    if (($script:HermesOutput.Handler -or $script:HermesOutput.Capture) -and -not $script:HermesOutput.Paused) {
         foreach ($piece in $pieces) { Send-HermesOutput -Text $piece[0] -NoNewline $true -Color $piece[1] }
         if (-not $NoNewline) { Send-HermesOutput -Text '' -NoNewline $false -Color '' }
     }
 }
 
-$script:HermesOutputHandler = $null
-$script:HermesOutputQuiet = $false
-# Paused while a list is redrawn in place (Read-ConsoleSelection): the handler gets the answer, not every redraw.
-$script:HermesHandlerPaused = $false
-# A status line written by Write-ConsoleStatusLine is on screen.
-$script:HermesStatusLineActive = $false
+# The output state in one place: the handler (Register-ConsoleOutputHandler) and its quiet mode; Paused while a list
+# is redrawn in place (Read-ConsoleSelection: the handler gets the answer, not every redraw); a status line on
+# screen (Write-ConsoleStatusLine); and the capture to a file (Start-ConsoleCapture).
+$script:HermesOutput = @{ Handler = $null; Quiet = $false; Paused = $false; StatusLineActive = $false; Capture = $null }
 # Tests set these to decide whether true color and live output are available.
 $script:HermesTrueColorOverride = $null
 $script:HermesLiveOverride = $null
@@ -215,7 +213,7 @@ function Send-HermesAnswer {
     [CmdletBinding()]
     param([AllowEmptyString()][string]$Text)
 
-    if (-not ($script:HermesOutputHandler -or $script:HermesCapture) -or $script:HermesHandlerPaused) { return }
+    if (-not ($script:HermesOutput.Handler -or $script:HermesOutput.Capture) -or $script:HermesOutput.Paused) { return }
     Send-HermesOutput -Text (ConvertTo-ConsoleSafeText -Text $Text) -NoNewline $false -Color ''
 }
 
@@ -270,9 +268,9 @@ function Test-HermesLiveOutput {
     [OutputType([bool])]
     param()
 
-    if ($script:HermesCapture) { return $false }
+    if ($script:HermesOutput.Capture) { return $false }
     if ($null -ne $script:HermesLiveOverride) { return [bool]$script:HermesLiveOverride }
-    if ($script:HermesOutputQuiet) { return $false }
+    if ($script:HermesOutput.Quiet) { return $false }
     try { return -not [Console]::IsOutputRedirected } catch { return $false }
 }
 
@@ -304,7 +302,7 @@ function Test-InteractiveConsole {
     [OutputType([bool])]
     param()
 
-    if ($script:HermesCapture) { return $false }
+    if ($script:HermesOutput.Capture) { return $false }
     if ($script:HermesSimulation) { return $script:HermesSimulation.Interactive }
     if ($null -ne $script:HermesInteractiveOverride) { return [bool]$script:HermesInteractiveOverride }
     if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) { return $false }
@@ -398,17 +396,14 @@ function Test-ClearScreenAllowed {
         True unless clearing the screen has been turned off for this session.
     .DESCRIPTION
         Set $env:HERMESCONSOLEUI_NOCLEAR to 1 (or true) to keep earlier output on screen,
-        for example while debugging. $Global:CassielDevMode is still honoured for
-        compatibility with Cassiel, which used it before this setting existed.
+        for example while debugging. Applications with their own debug switch set this variable
+        from it; the module reads no variable of the calling application.
     #>
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'Read-only compatibility with Cassiel, which sets this variable.')]
     [CmdletBinding()]
     [OutputType([bool])]
     param()
 
-    if ($env:HERMESCONSOLEUI_NOCLEAR -match '^(1|true|yes)$') { return $false }
-    if ($Global:CassielDevMode) { return $false }
-    return $true
+    return -not ($env:HERMESCONSOLEUI_NOCLEAR -match '^(1|true|yes)$')
 }
 
 function Get-CenteredText {

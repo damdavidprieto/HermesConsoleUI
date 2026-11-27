@@ -1,4 +1,4 @@
-BeforeDiscovery {
+﻿BeforeDiscovery {
     # 05-InteractiveMenu.ps1 waits for input, so it is not run here.
     $script:examples = Get-ChildItem -Path (Join-Path $PSScriptRoot '..\..\examples') -Filter '*.ps1' |
         Where-Object Name -NE '05-InteractiveMenu.ps1' |

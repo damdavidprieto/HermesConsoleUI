@@ -1,4 +1,4 @@
-# Titles, headers and status messages.
+﻿# Titles, headers and status messages.
 # Run from the repository: .\examples\01-Text.ps1
 
 Import-Module (Join-Path $PSScriptRoot '..\HermesConsoleUI.psd1') -Force
