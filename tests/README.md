@@ -10,6 +10,7 @@ PowerShell 7 on Windows, Linux and macOS.
 | `Unit/Security.Tests.ps1` | Removal of terminal escape sequences and validation of menu input. |
 | `Unit/Manifest.Tests.ps1` | Exports and source file encoding (UTF-8 with BOM for non-ASCII files). |
 | `Unit/Examples.Tests.ps1` | Runs the non-interactive scripts in `examples/`. |
+| `Unit/Hygiene.Tests.ps1` | Byte order marks of the script files, no mention of a consuming application in the module, and `docs/API.md` lists every exported command. |
 | `Unit/Simulation.Tests.ps1` | Simulated keys and answers, prompts that end in ':' or '?', segments merged into one list, the label width of key-value lists, cut text with line breaks and the prefix of `Write-ConsoleText`. |
 | `Unit/Lines.Tests.ps1` | Lines of segments, named styles, layout settings, key-value lists, grids, styles in tables and charts, titles and rules, captures to a file, `Wait-ConsoleKey` and the `Write-Host` redirection. |
 | `Unit/TextAndPrompts.Tests.ps1` | Text width, cutting and wrapping, exact colors, answers in captures, keyed menus, filtering and status lines. |

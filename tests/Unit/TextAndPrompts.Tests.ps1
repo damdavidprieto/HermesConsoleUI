@@ -260,7 +260,7 @@ Describe 'Read-ConsoleSelection -Filter' {
 
 Describe 'Status line and clearing the screen' {
     BeforeEach { Start-HostCapture }
-    AfterEach { InModuleScope HermesConsoleUI { $script:HermesLiveOverride = $null; $script:HermesStatusLineActive = $false } }
+    AfterEach { InModuleScope HermesConsoleUI { $script:HermesLiveOverride = $null; $script:HermesOutput.StatusLineActive = $false } }
 
     It 'rewrites one line in place, and clears it before other output' {
         InModuleScope HermesConsoleUI { $script:HermesLiveOverride = $true }

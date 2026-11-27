@@ -1,4 +1,4 @@
-# HermesConsoleUI 2.9.0: public API
+# HermesConsoleUI 2.10.0: public API
 
 Generated from `HermesConsoleUI.psd1` and the help of each command. Every name listed here is exported; the
 test `tests/Unit/Hygiene.Tests.ps1` checks that none is missing.
@@ -149,14 +149,25 @@ can change or disappear in any version. They are listed at the end.
 | `Test-NoColor` | helpers.ps1 |
 | `Write-HermesHost` | helpers.ps1 |
 | `Write-HermesSegment` | helpers.ps1 |
+| `ConvertTo-MenuEntry` | interactive_components.ps1 |
+| `Find-ConsoleSelectionJump` | interactive_components.ps1 |
+| `Format-SelectionLine` | interactive_components.ps1 |
+| `Get-ConsoleSelectionView` | interactive_components.ps1 |
+| `Get-SelectionItemColor` | interactive_components.ps1 |
+| `Invoke-ConsoleSelectionKey` | interactive_components.ps1 |
+| `Read-ConsoleMenuPick` | interactive_components.ps1 |
 | `Read-ConsoleSelectionKey` | interactive_components.ps1 |
 | `Read-ConsoleWordChoice` | interactive_components.ps1 |
 | `Test-HermesInputRedirected` | interactive_components.ps1 |
+| `Update-ConsoleSelectionFilter` | interactive_components.ps1 |
+| `Write-ConsoleMenuList` | interactive_components.ps1 |
+| `Write-ConsoleSelectionView` | interactive_components.ps1 |
 | `Assert-HermesSegmentList` | line_components.ps1 |
 | `ConvertTo-HermesKey` | line_components.ps1 |
 | `ConvertTo-HermesLine` | line_components.ps1 |
 | `ConvertTo-HermesSegment` | line_components.ps1 |
 | `ConvertTo-HermesStyleEntry` | line_components.ps1 |
+| `Get-HermesLayoutDefault` | line_components.ps1 |
 | `Get-HermesLineWidth` | line_components.ps1 |
 | `Get-HermesMargin` | line_components.ps1 |
 | `Get-HermesStyle` | line_components.ps1 |
@@ -169,4 +180,7 @@ can change or disappear in any version. They are listed at the end.
 | `Add-ConsoleTreeLine` | visual_components.ps1 |
 | `Format-TableCell` | visual_components.ps1 |
 | `Get-ColumnValue` | visual_components.ps1 |
+| `Get-TableCellText` | visual_components.ps1 |
+| `Get-TableText` | visual_components.ps1 |
 | `Resolve-TableColumn` | visual_components.ps1 |
+| `Write-TableBody` | visual_components.ps1 |

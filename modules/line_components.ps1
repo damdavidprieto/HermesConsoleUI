@@ -6,8 +6,19 @@
 
 # --- Layout settings ---------------------------------------------------------------------------------------
 
-$script:HermesLayoutDefault = @{ MaxWidth = 0; Margin = 2; DefaultWidth = 0 }
-$script:HermesLayout = $script:HermesLayoutDefault.Clone()
+function Get-HermesLayoutDefault {
+    <#
+    .SYNOPSIS
+        The layout settings before any Set-ConsoleLayout: no maximum, a margin of 2, and 80 columns when the width is unknown.
+    #>
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+
+    return @{ MaxWidth = 0; Margin = 2; DefaultWidth = 0 }
+}
+
+$script:HermesLayout = Get-HermesLayoutDefault
 
 function Set-ConsoleLayout {
     <#
@@ -55,7 +66,7 @@ function Set-ConsoleLayout {
     )
 
     if (-not $PSCmdlet.ShouldProcess('HermesConsoleUI layout', 'Set')) { return }
-    if ($Reset) { $script:HermesLayout = $script:HermesLayoutDefault.Clone() }
+    if ($Reset) { $script:HermesLayout = Get-HermesLayoutDefault }
     foreach ($name in 'MaxWidth', 'Margin', 'DefaultWidth') {
         if ($PSBoundParameters.ContainsKey($name)) { $script:HermesLayout[$name] = [int]$PSBoundParameters[$name] }
     }
@@ -827,7 +838,6 @@ function Write-ConsoleGrid {
 
 # --- Captures to a file ------------------------------------------------------------------------------------
 
-$script:HermesCapture = $null
 
 function Start-ConsoleCapture {
     <#
@@ -866,10 +876,10 @@ function Start-ConsoleCapture {
 
     $full = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
     if (-not $PSCmdlet.ShouldProcess($full, 'Capture console output')) { return }
-    if ($script:HermesCapture) { Stop-ConsoleCapture -Confirm:$false }
+    if ($script:HermesOutput.Capture) { Stop-ConsoleCapture -Confirm:$false }
     $encoding = [System.Text.UTF8Encoding]::new($false)
     if (-not $Append -or -not [System.IO.File]::Exists($full)) { [System.IO.File]::WriteAllText($full, '', $encoding) }
-    $script:HermesCapture = @{ Path = $full; Line = [System.Text.StringBuilder]::new(); Encoding = $encoding }
+    $script:HermesOutput.Capture = @{ Path = $full; Line = [System.Text.StringBuilder]::new(); Encoding = $encoding }
 }
 
 function Stop-ConsoleCapture {
@@ -887,10 +897,10 @@ function Stop-ConsoleCapture {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
     param()
 
-    if (-not $script:HermesCapture) { return }
-    if (-not $PSCmdlet.ShouldProcess($script:HermesCapture.Path, 'Stop capturing console output')) { return }
-    $capture = $script:HermesCapture
-    $script:HermesCapture = $null
+    if (-not $script:HermesOutput.Capture) { return }
+    if (-not $PSCmdlet.ShouldProcess($script:HermesOutput.Capture.Path, 'Stop capturing console output')) { return }
+    $capture = $script:HermesOutput.Capture
+    $script:HermesOutput.Capture = $null
     if ($capture.Line.Length) {
         try { [System.IO.File]::AppendAllText($capture.Path, $capture.Line.ToString() + "`n", $capture.Encoding) } catch { Write-Verbose "Capture failed: $($_.Exception.Message)" }
     }
@@ -1108,21 +1118,6 @@ function Wait-ConsoleKey {
     Send-HermesAnswer -Text ''
 }
 
-$script:HermesWriteHostProxy = {
-    [CmdletBinding()]
-    param(
-        [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
-        [object[]]$Object,
-        [switch]$NoNewline,
-        [object]$Separator,
-        $ForegroundColor,
-        $BackgroundColor
-    )
-    # Windows PowerShell 5.1 passes Write-Host 'a', 'b' as one array argument; PowerShell 7 as two.
-    if ($null -ne $Object -and $Object.Count -eq 1 -and $Object[0] -is [array]) { $PSBoundParameters['Object'] = [object[]]$Object[0] }
-    Write-HermesHost @PSBoundParameters
-}
-
 function Enable-ConsoleHostRedirect {
     <#
     .SYNOPSIS
@@ -1143,9 +1138,24 @@ function Enable-ConsoleHostRedirect {
     param()
 
     if (-not $PSCmdlet.ShouldProcess('Write-Host in the calling scope', 'Redirect to HermesConsoleUI')) { return }
+    # The function the caller gets: the same parameters, written through the module.
+    $proxy = {
+        [CmdletBinding()]
+        param(
+            [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
+            [object[]]$Object,
+            [switch]$NoNewline,
+            [object]$Separator,
+            $ForegroundColor,
+            $BackgroundColor
+        )
+        # Windows PowerShell 5.1 passes Write-Host 'a', 'b' as one array argument; PowerShell 7 as two.
+        if ($null -ne $Object -and $Object.Count -eq 1 -and $Object[0] -is [array]) { $PSBoundParameters['Object'] = [object[]]$Object[0] }
+        Write-HermesHost @PSBoundParameters
+    }
     # An unbound script block runs in the caller's session state; one written here would run in this module's.
     $define = [scriptblock]::Create('param($Body) Set-Item -Path function:script:Write-Host -Value $Body')
-    $null = $PSCmdlet.SessionState.InvokeCommand.InvokeScript($PSCmdlet.SessionState, $define, @($script:HermesWriteHostProxy))
+    $null = $PSCmdlet.SessionState.InvokeCommand.InvokeScript($PSCmdlet.SessionState, $define, @($proxy))
 }
 
 function Disable-ConsoleHostRedirect {

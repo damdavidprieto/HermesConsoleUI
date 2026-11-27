@@ -660,9 +660,9 @@ function Read-ConsoleInput {
 
     while ($true) {
         if ($ownPrompt) {
-            $paused = $script:HermesHandlerPaused
-            $script:HermesHandlerPaused = $true
-            try { Write-HermesHost $shownPrompt -NoNewline } finally { $script:HermesHandlerPaused = $paused }
+            $paused = $script:HermesOutput.Paused
+            $script:HermesOutput.Paused = $true
+            try { Write-HermesHost $shownPrompt -NoNewline } finally { $script:HermesOutput.Paused = $paused }
             $answer = Read-HermesHost
         }
         else { $answer = Read-HermesHost -Prompt $Prompt }
@@ -906,9 +906,9 @@ function Read-ConsoleSelection {
     }
     else {
         # The list is redrawn at every key: an output handler gets the answer once, not every redraw.
-        $script:HermesHandlerPaused = $true
+        $script:HermesOutput.Paused = $true
         try { $final = Read-ConsoleSelectionKey -Labels $labels -Multiple:$Multiple -Default $Default -PageSize $PageSize -Filter:$Filter }
-        finally { $script:HermesHandlerPaused = $false }
+        finally { $script:HermesOutput.Paused = $false }
         $answer = if ($null -eq $final) { Get-UIText -Key 'Selection.Cancelled' -Default '(cancelled)' } else { (@($final) | ForEach-Object { $labels[$_] }) -join ', ' }
         Send-HermesAnswer "  > $answer"
     }
@@ -928,7 +928,6 @@ function Read-ConsoleSelectionKey {
         With -Filter, typed characters narrow the list to the labels that contain them. ItemColors gives a
         color to each option when it is neither highlighted nor marked.
     #>
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'ItemColors', Justification = 'Used by the render script block.')]
     [CmdletBinding()]
     [OutputType([int[]], [object[]])]
     param(
@@ -940,142 +939,243 @@ function Read-ConsoleSelectionKey {
         [string[]]$ItemColors
     )
 
-    $count = $Labels.Count
-    $all = [int[]](0..($count - 1))
-    # Index is a position in Visible, the options that pass the filter (all of them without one).
-    $state = @{
-        Index   = [Math]::Max(0, [Math]::Min($Default, $count - 1))
-        Top     = 0
-        Marked  = [System.Collections.Generic.SortedSet[int]]::new()
-        Text    = ''
-        Visible = $all
-    }
-    $pageSize = [Math]::Min($PageSize, $count)
-    $hint = if ($Filter -and $Multiple) { Get-UIText -Key 'Selection.FilterMultiHint' -Default 'Type to filter, Space mark, Enter accept, Esc clear or cancel' }
-    elseif ($Filter) { Get-UIText -Key 'Selection.FilterHint' -Default 'Type to filter, Up/Down move, Enter select, Esc clear or cancel' }
-    elseif ($Multiple) { Get-UIText -Key 'Selection.MultiHint' -Default 'Up/Down move, Space mark, A all, Enter accept, Esc cancel' }
-    else { Get-UIText -Key 'Selection.Hint' -Default 'Up/Down move, Enter select, Esc cancel' }
-    $noMatch = Get-UIText -Key 'Selection.NoMatch' -Default '(no matches)'
-    $width = Get-ConsoleWidth
-    $colors = @{
-        Current = Resolve-UIColor -Role Primary
-        Marked  = Resolve-UIColor -Role Success
-        Other   = Resolve-UIColor -Role Highlight
-        Muted   = Resolve-UIColor -Role Muted
-    }
-    $fit = {
-        param([string]$Line)
-        if ($width -le 1) { return $Line }
-        return (Format-ConsoleText -Text $Line -Width ($width - 1) -Align Left)
-    }
-    $applyFilter = {
-        $state.Visible = if ($state.Text) { [int[]]@(foreach ($i in $all) { if ($Labels[$i].IndexOf($state.Text, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $i } }) } else { $all }
-        $state.Index = 0
-        $state.Top = 0
-    }
-
-    $render = {
-        $shown = $state.Visible.Count
-        if ($state.Index -lt $state.Top) { $state.Top = $state.Index }
-        if ($state.Index -ge $state.Top + $pageSize) { $state.Top = $state.Index - $pageSize + 1 }
-        for ($row = 0; $row -lt $pageSize; $row++) {
-            $position = $state.Top + $row
-            # Always the same number of lines, so the next redraw covers this one.
-            if ($position -ge $shown) {
-                Write-HermesHost (& $fit $(if ($row -eq 0) { "  $noMatch" } else { '' })) -ForegroundColor $colors.Muted
-                continue
-            }
-            $i = $state.Visible[$position]
-            $pointer = if ($position -eq $state.Index) { '> ' } else { '  ' }
-            $box = ''
-            if ($Multiple) { $box = if ($state.Marked.Contains($i)) { '[x] ' } else { '[ ] ' } }
-            $color = if ($position -eq $state.Index) { $colors.Current }
-            elseif ($state.Marked.Contains($i)) { $colors.Marked }
-            elseif ($ItemColors -and $i -lt $ItemColors.Count -and $ItemColors[$i]) { $ItemColors[$i] }
-            else { $colors.Other }
-            Write-HermesHost (& $fit "  $pointer$box$($Labels[$i])") -ForegroundColor $color
-        }
-        $footer = "  $hint"
-        if ($state.Text) { $footer += "  [$($state.Text)]" }
-        if ($shown -gt $pageSize) { $footer += "  ($($state.Index + 1)/$shown)" }
-        Write-HermesHost (& $fit $footer) -ForegroundColor $colors.Muted
-    }
-
-    # A letter or digit jumps to the next option that starts with it, as hotkeys do in menus labelled
-    # "1  Audit", "2  Apply"... Returns whether the highlight moved.
-    $jump = {
-        param([string]$Typed)
-        if ($Typed -notmatch '^[\p{L}\p{N}?]$') { return $false }
-        for ($step = 1; $step -le $count; $step++) {
-            $candidate = ($state.Index + $step) % $count
-            if ($Labels[$candidate].TrimStart().StartsWith($Typed, [StringComparison]::OrdinalIgnoreCase)) {
-                $state.Index = $candidate
-                return $true
-            }
-        }
-        return $false
-    }
-
+    $view = Get-ConsoleSelectionView -Labels $Labels -Default $Default -PageSize $PageSize -Multiple:$Multiple -Filter:$Filter -ItemColors $ItemColors
     $cursorWasVisible = Set-ConsoleCursorVisible -Visible $false
     try {
-        & $render
+        Write-ConsoleSelectionView -View $view
         while ($true) {
-            $key = Read-HermesKey
-            $redraw = $true
-            $shown = $state.Visible.Count
-            $typed = [string]$key.KeyChar
-            if ($Filter -and $typed -match '^[^\p{C}\s]$') {
-                $state.Text += $typed
-                & $applyFilter
+            $step = Invoke-ConsoleSelectionKey -View $view -Key (Read-HermesKey)
+            if ($step.Done) {
+                # A cancelled list returns $null; the comma keeps a list of indexes from being unrolled.
+                if ($null -eq $step.Result) { return $null }
+                return , $step.Result
             }
-            else {
-                switch ([string]$key.Key) {
-                    'UpArrow' { if ($shown) { $state.Index = ($state.Index - 1 + $shown) % $shown } }
-                    'DownArrow' { if ($shown) { $state.Index = ($state.Index + 1) % $shown } }
-                    'PageUp' { $state.Index = [Math]::Max(0, $state.Index - $pageSize) }
-                    'PageDown' { $state.Index = [Math]::Max(0, [Math]::Min($shown - 1, $state.Index + $pageSize)) }
-                    'Home' { $state.Index = 0 }
-                    'End' { $state.Index = [Math]::Max(0, $shown - 1) }
-                    'Backspace' {
-                        if ($Filter -and $state.Text) { $state.Text = $state.Text.Substring(0, $state.Text.Length - 1); & $applyFilter }
-                        else { $redraw = $false }
-                    }
-                    'Spacebar' {
-                        if ($Multiple -and $shown) {
-                            $i = $state.Visible[$state.Index]
-                            if (-not $state.Marked.Remove($i)) { $null = $state.Marked.Add($i) }
-                        }
-                    }
-                    'A' {
-                        if ($Multiple) {
-                            if ($state.Marked.Count -eq $count) { $state.Marked.Clear() }
-                            else { for ($i = 0; $i -lt $count; $i++) { $null = $state.Marked.Add($i) } }
-                        }
-                        else { $redraw = & $jump $typed }
-                    }
-                    'Enter' {
-                        if ($Multiple -and $state.Marked.Count) { return , ([int[]]@($state.Marked)) }
-                        if ($shown) { return , ([int[]]@($state.Visible[$state.Index])) }
-                        $redraw = $false
-                    }
-                    'Escape' {
-                        if ($Filter -and $state.Text) { $state.Text = ''; & $applyFilter }
-                        else { return $null }
-                    }
-                    default { $redraw = $(if ($Filter) { $false } else { & $jump $typed }) }
-                }
-            }
-            if ($redraw) {
+            if ($step.Redraw) {
                 # Redraw over the previous list: it always has the same number of lines.
                 $row = Get-ConsoleCursorRow
-                if ($row -ge 0) { Set-ConsoleCursorRow -Row ($row - $pageSize - 1) }
-                & $render
+                if ($row -ge 0) { Set-ConsoleCursorRow -Row ($row - $view.PageSize - 1) }
+                Write-ConsoleSelectionView -View $view
             }
         }
     }
     finally {
         $null = Set-ConsoleCursorVisible -Visible $cursorWasVisible
     }
+}
+
+function Get-ConsoleSelectionView {
+    <#
+    .SYNOPSIS
+        The state of one arrow-key list: its labels, the highlight, the marks, the filter and the colors.
+    #>
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [string[]]$Labels,
+        [int]$Default,
+        [int]$PageSize,
+        [switch]$Multiple,
+        [switch]$Filter,
+        [string[]]$ItemColors
+    )
+
+    $total = $Labels.Count
+    $all = [int[]](0..($total - 1))
+    $hint = if ($Filter -and $Multiple) { Get-UIText -Key 'Selection.FilterMultiHint' -Default 'Type to filter, Space mark, Enter accept, Esc clear or cancel' }
+    elseif ($Filter) { Get-UIText -Key 'Selection.FilterHint' -Default 'Type to filter, Up/Down move, Enter select, Esc clear or cancel' }
+    elseif ($Multiple) { Get-UIText -Key 'Selection.MultiHint' -Default 'Up/Down move, Space mark, A all, Enter accept, Esc cancel' }
+    else { Get-UIText -Key 'Selection.Hint' -Default 'Up/Down move, Enter select, Esc cancel' }
+
+    # Index is a position in Visible, the options that pass the filter (all of them without one).
+    return @{
+        Labels     = $Labels
+        Total      = $total
+        All        = $all
+        Visible    = $all
+        Index      = [Math]::Max(0, [Math]::Min($Default, $total - 1))
+        Top        = 0
+        Text       = ''
+        Marked     = [System.Collections.Generic.SortedSet[int]]::new()
+        PageSize   = [Math]::Min($PageSize, $total)
+        Multiple   = [bool]$Multiple
+        Filter     = [bool]$Filter
+        ItemColors = $ItemColors
+        Hint       = $hint
+        NoMatch    = Get-UIText -Key 'Selection.NoMatch' -Default '(no matches)'
+        Width      = Get-ConsoleWidth
+        Colors     = @{
+            Current = Resolve-UIColor -Role Primary
+            Marked  = Resolve-UIColor -Role Success
+            Other   = Resolve-UIColor -Role Highlight
+            Muted   = Resolve-UIColor -Role Muted
+        }
+    }
+}
+
+function Update-ConsoleSelectionFilter {
+    <#
+    .SYNOPSIS
+        Narrows the list to the options that contain the typed text, and moves the highlight to the first of them.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Changes the view of a list only.')]
+    [CmdletBinding()]
+    param([hashtable]$View)
+
+    $View.Visible = if ($View.Text) {
+        [int[]]@(foreach ($i in $View.All) { if ($View.Labels[$i].IndexOf($View.Text, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $i } })
+    }
+    else { $View.All }
+    $View.Index = 0
+    $View.Top = 0
+}
+
+function Find-ConsoleSelectionJump {
+    <#
+    .SYNOPSIS
+        Moves the highlight to the next option that starts with the typed letter or digit; returns whether it moved.
+    .DESCRIPTION
+        A letter or digit jumps to the next option that starts with it, as hotkeys do in menus labelled "1  Audit",
+        "2  Apply"...
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param([hashtable]$View, [string]$Typed)
+
+    if ($Typed -notmatch '^[\p{L}\p{N}?]$') { return $false }
+    for ($step = 1; $step -le $View.Total; $step++) {
+        $candidate = ($View.Index + $step) % $View.Total
+        if ($View.Labels[$candidate].TrimStart().StartsWith($Typed, [StringComparison]::OrdinalIgnoreCase)) {
+            $View.Index = $candidate
+            return $true
+        }
+    }
+    return $false
+}
+
+function Format-SelectionLine {
+    <#
+    .SYNOPSIS
+        Cuts a line of the list to the console width, one column short, so that the cursor never wraps.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([hashtable]$View, [string]$Line)
+
+    if ($View.Width -le 1) { return $Line }
+    return (Format-ConsoleText -Text $Line -Width ($View.Width - 1) -Align Left)
+}
+
+function Get-SelectionItemColor {
+    <#
+    .SYNOPSIS
+        The color of one option: the highlight, a mark, its own color from -ItemColors, or the default one.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([hashtable]$View, [int]$Position, [int]$Item)
+
+    if ($Position -eq $View.Index) { return $View.Colors.Current }
+    if ($View.Marked.Contains($Item)) { return $View.Colors.Marked }
+    if ($View.ItemColors -and $Item -lt $View.ItemColors.Count -and $View.ItemColors[$Item]) { return $View.ItemColors[$Item] }
+    return $View.Colors.Other
+}
+
+function Write-ConsoleSelectionView {
+    <#
+    .SYNOPSIS
+        Draws the page of the list that holds the highlight, and the footer with the hint and the position.
+    .DESCRIPTION
+        Always writes the same number of lines (empty ones past the end), so the next redraw covers this one.
+    #>
+    [CmdletBinding()]
+    param([hashtable]$View)
+
+    $shown = $View.Visible.Count
+    if ($View.Index -lt $View.Top) { $View.Top = $View.Index }
+    if ($View.Index -ge $View.Top + $View.PageSize) { $View.Top = $View.Index - $View.PageSize + 1 }
+    for ($row = 0; $row -lt $View.PageSize; $row++) {
+        $position = $View.Top + $row
+        if ($position -ge $shown) {
+            $empty = if ($row -eq 0) { "  $($View.NoMatch)" } else { '' }
+            Write-HermesHost (Format-SelectionLine -View $View -Line $empty) -ForegroundColor $View.Colors.Muted
+            continue
+        }
+        $item = $View.Visible[$position]
+        $pointer = if ($position -eq $View.Index) { '> ' } else { '  ' }
+        $box = ''
+        if ($View.Multiple) { $box = if ($View.Marked.Contains($item)) { '[x] ' } else { '[ ] ' } }
+        $color = Get-SelectionItemColor -View $View -Position $position -Item $item
+        Write-HermesHost (Format-SelectionLine -View $View -Line "  $pointer$box$($View.Labels[$item])") -ForegroundColor $color
+    }
+    $footer = "  $($View.Hint)"
+    if ($View.Text) { $footer += "  [$($View.Text)]" }
+    if ($shown -gt $View.PageSize) { $footer += "  ($($View.Index + 1)/$shown)" }
+    Write-HermesHost (Format-SelectionLine -View $View -Line $footer) -ForegroundColor $View.Colors.Muted
+}
+
+function Invoke-ConsoleSelectionKey {
+    <#
+    .SYNOPSIS
+        Applies one key to the list: moves the highlight, marks, filters, jumps, or ends the choice.
+    .DESCRIPTION
+        Returns an object with Done (the choice is made or cancelled), Result (the chosen indexes, or $null for
+        a cancel) and Redraw (the list has to be drawn again).
+    #>
+    [CmdletBinding()]
+    [OutputType([pscustomobject])]
+    param([hashtable]$View, [System.ConsoleKeyInfo]$Key)
+
+    $step = [pscustomobject]@{ Done = $false; Result = $null; Redraw = $true }
+    $shown = $View.Visible.Count
+    $typed = [string]$Key.KeyChar
+    if ($View.Filter -and $typed -match '^[^\p{C}\s]$') {
+        $View.Text += $typed
+        Update-ConsoleSelectionFilter -View $View
+        return $step
+    }
+
+    switch ([string]$Key.Key) {
+        'UpArrow' { if ($shown) { $View.Index = ($View.Index - 1 + $shown) % $shown } }
+        'DownArrow' { if ($shown) { $View.Index = ($View.Index + 1) % $shown } }
+        'PageUp' { $View.Index = [Math]::Max(0, $View.Index - $View.PageSize) }
+        'PageDown' { $View.Index = [Math]::Max(0, [Math]::Min($shown - 1, $View.Index + $View.PageSize)) }
+        'Home' { $View.Index = 0 }
+        'End' { $View.Index = [Math]::Max(0, $shown - 1) }
+        'Backspace' {
+            if ($View.Filter -and $View.Text) {
+                $View.Text = $View.Text.Substring(0, $View.Text.Length - 1)
+                Update-ConsoleSelectionFilter -View $View
+            }
+            else { $step.Redraw = $false }
+        }
+        'Spacebar' {
+            if ($View.Multiple -and $shown) {
+                $item = $View.Visible[$View.Index]
+                if (-not $View.Marked.Remove($item)) { $null = $View.Marked.Add($item) }
+            }
+        }
+        'A' {
+            if ($View.Multiple) {
+                if ($View.Marked.Count -eq $View.Total) { $View.Marked.Clear() }
+                else { for ($i = 0; $i -lt $View.Total; $i++) { $null = $View.Marked.Add($i) } }
+            }
+            else { $step.Redraw = Find-ConsoleSelectionJump -View $View -Typed $typed }
+        }
+        'Enter' {
+            if ($View.Multiple -and $View.Marked.Count) { $step.Done = $true; $step.Result = [int[]]@($View.Marked) }
+            elseif ($shown) { $step.Done = $true; $step.Result = [int[]]@($View.Visible[$View.Index]) }
+            else { $step.Redraw = $false }
+        }
+        'Escape' {
+            if ($View.Filter -and $View.Text) {
+                $View.Text = ''
+                Update-ConsoleSelectionFilter -View $View
+            }
+            else { $step.Done = $true }
+        }
+        default { $step.Redraw = $(if ($View.Filter) { $false } else { Find-ConsoleSelectionJump -View $View -Typed $typed }) }
+    }
+    return $step
 }
 
 function Read-ConsoleMenu {
@@ -1149,16 +1249,7 @@ function Read-ConsoleMenu {
     )
 
     if ($Items.Count -eq 0) { throw [System.ArgumentException]::new('-Items has no options.', 'Items') }
-    $entries = @(foreach ($key in $Items.Keys) {
-            $value = $Items[$key]
-            $label = $null; $note = $null; $color = $null
-            if ($value -is [System.Collections.IDictionary]) { $label = $value['Label']; $note = $value['Note']; $color = $value['Color'] }
-            elseif ($null -eq $value -or $value -is [string]) { $label = $value }
-            elseif ($value -is [System.Collections.IList]) { $parts = @($value); $label = $parts[0]; if ($parts.Count -gt 1) { $note = $parts[1] }; if ($parts.Count -gt 2) { $color = $parts[2] } }
-            elseif ($value.PSObject.Properties['Label']) { $label = $value.Label; $note = $value.Note; $color = $value.Color }
-            else { $label = [string]$value }
-            [pscustomobject]@{ Key = [string]$key; Label = [string]$label; Note = [string]$note; Color = [string]$color }
-        })
+    $entries = @(ConvertTo-MenuEntry -Items $Items)
     $keys = @($entries.Key)
     $defaultKey = @($keys | Where-Object { $_ -ieq $Default })[0]
     if ($null -eq $defaultKey) { $defaultKey = $keys[0] }
@@ -1170,44 +1261,101 @@ function Read-ConsoleMenu {
     $headWidth = [Math]::Min(46, ($heads | ForEach-Object { Measure-ConsoleText -Text $_ } | Measure-Object -Maximum).Maximum)
 
     if ($Title) { Write-HermesHost ('  ' + $Title) -ForegroundColor (Resolve-UIColor -Role Primary) }
-    $primary = Resolve-UIColor -Role Primary
 
     if (Test-InteractiveConsole) {
-        $lines = for ($n = 0; $n -lt $entries.Count; $n++) {
-            $line = $heads[$n]
-            if ($entries[$n].Note) { $line = (Format-ConsoleText -Text $line -Width $headWidth -Align Left) + '  ' + $entries[$n].Note }
-            if ($entries[$n].Key -eq $Recommended) { $line += "  $marker" }
-            $line
-        }
-        $itemColors = @(foreach ($entry in $entries) { if ($entry.Key -eq $Recommended) { $primary } elseif ($entry.Color) { $entry.Color } else { '' } })
-        $script:HermesHandlerPaused = $true
-        try { $picked = Read-ConsoleSelectionKey -Labels @($lines) -Default ([array]::IndexOf($keys, $defaultKey)) -PageSize ([Math]::Min($PageSize, $entries.Count)) -Filter:$Filter -ItemColors $itemColors }
-        finally { $script:HermesHandlerPaused = $false }
+        $picked = Read-ConsoleMenuPick -Entries $entries -Keys $keys -DefaultKey $defaultKey -Heads $heads -HeadWidth $headWidth -Marker $marker -Recommended $Recommended -PageSize $PageSize -Filter:$Filter
         if ($null -eq $picked) {
             Send-HermesAnswer ('  > ' + (Get-UIText -Key 'Selection.Cancelled' -Default '(cancelled)'))
             if ($PSBoundParameters.ContainsKey('Cancel')) { return $Cancel }
             return $null
         }
-        $chosen = $entries[$picked[0]]
+        $chosen = $entries[$picked]
         Send-HermesAnswer "  > $($chosen.Key)  $($chosen.Label)"
         return $chosen.Key
     }
 
-    $muted = Resolve-UIColor -Role Muted
-    $highlight = Resolve-UIColor -Role Highlight
-    foreach ($entry in $entries) {
-        $isRecommended = $entry.Key -eq $Recommended
-        Write-HermesHost ('   ' + $entry.Key.PadRight($keyWidth) + '  ') -NoNewline -ForegroundColor $(if ($isRecommended) { $primary } else { $highlight })
-        $labelColor = if ($isRecommended) { $primary } elseif ($entry.Color) { $entry.Color } else { $highlight }
-        $labelText = if ($entry.Note) { Format-ConsoleText -Text $entry.Label -Width ($headWidth - $keyWidth - 2) -Align Left } else { $entry.Label }
-        Write-HermesHost $labelText -NoNewline -ForegroundColor $labelColor
-        if ($entry.Note) { Write-HermesHost ('  ' + $entry.Note) -NoNewline -ForegroundColor $muted }
-        if ($isRecommended) { Write-HermesHost ('  ' + $marker) -NoNewline -ForegroundColor $primary }
-        Write-HermesHost ''
-    }
+    Write-ConsoleMenuList -Entries $entries -KeyWidth $keyWidth -HeadWidth $headWidth -Marker $marker -Recommended $Recommended
     $choice = @{ Choices = $keys; DefaultValue = $defaultKey }
     if ($Prompt) { $choice.Prompt = $Prompt }
     return (Read-ConsoleChoice @choice)
+}
+
+function ConvertTo-MenuEntry {
+    <#
+    .SYNOPSIS
+        Reads the items of Read-ConsoleMenu as entries with a key, a text, a note and a color.
+    #>
+    [CmdletBinding()]
+    [OutputType([pscustomobject])]
+    param([System.Collections.IDictionary]$Items)
+
+    foreach ($key in $Items.Keys) {
+        $value = $Items[$key]
+        $label = $null; $note = $null; $color = $null
+        if ($value -is [System.Collections.IDictionary]) { $label = $value['Label']; $note = $value['Note']; $color = $value['Color'] }
+        elseif ($null -eq $value -or $value -is [string]) { $label = $value }
+        elseif ($value -is [System.Collections.IList]) { $parts = @($value); $label = $parts[0]; if ($parts.Count -gt 1) { $note = $parts[1] }; if ($parts.Count -gt 2) { $color = $parts[2] } }
+        elseif ($value.PSObject.Properties['Label']) { $label = $value.Label; $note = $value.Note; $color = $value.Color }
+        else { $label = [string]$value }
+        [pscustomobject]@{ Key = [string]$key; Label = [string]$label; Note = [string]$note; Color = [string]$color }
+    }
+}
+
+function Read-ConsoleMenuPick {
+    <#
+    .SYNOPSIS
+        Shows the options in the arrow-key list and returns the position of the one chosen, or $null when cancelled.
+    #>
+    [CmdletBinding()]
+    [OutputType([int])]
+    param(
+        [object[]]$Entries,
+        [string[]]$Keys,
+        [string]$DefaultKey,
+        [string[]]$Heads,
+        [int]$HeadWidth,
+        [string]$Marker,
+        [string]$Recommended,
+        [int]$PageSize,
+        [switch]$Filter
+    )
+
+    $primary = Resolve-UIColor -Role Primary
+    $lines = @(for ($n = 0; $n -lt $Entries.Count; $n++) {
+            $line = $Heads[$n]
+            if ($Entries[$n].Note) { $line = (Format-ConsoleText -Text $line -Width $HeadWidth -Align Left) + '  ' + $Entries[$n].Note }
+            if ($Entries[$n].Key -eq $Recommended) { $line += "  $Marker" }
+            $line
+        })
+    $itemColors = @(foreach ($entry in $Entries) { if ($entry.Key -eq $Recommended) { $primary } elseif ($entry.Color) { $entry.Color } else { '' } })
+    $script:HermesOutput.Paused = $true
+    try { $result = Read-ConsoleSelectionKey -Labels $lines -Default ([array]::IndexOf($Keys, $DefaultKey)) -PageSize ([Math]::Min($PageSize, $Entries.Count)) -Filter:$Filter -ItemColors $itemColors }
+    finally { $script:HermesOutput.Paused = $false }
+    if ($null -eq $result) { return $null }
+    return [int]$result[0]
+}
+
+function Write-ConsoleMenuList {
+    <#
+    .SYNOPSIS
+        Lists the options of a menu for a console without arrow keys: key, text, note and the recommended mark.
+    #>
+    [CmdletBinding()]
+    param([object[]]$Entries, [int]$KeyWidth, [int]$HeadWidth, [string]$Marker, [string]$Recommended)
+
+    $primary = Resolve-UIColor -Role Primary
+    $muted = Resolve-UIColor -Role Muted
+    $highlight = Resolve-UIColor -Role Highlight
+    foreach ($entry in $Entries) {
+        $isRecommended = $entry.Key -eq $Recommended
+        Write-HermesHost ('   ' + $entry.Key.PadRight($KeyWidth) + '  ') -NoNewline -ForegroundColor $(if ($isRecommended) { $primary } else { $highlight })
+        $labelColor = if ($isRecommended) { $primary } elseif ($entry.Color) { $entry.Color } else { $highlight }
+        $labelText = if ($entry.Note) { Format-ConsoleText -Text $entry.Label -Width ($HeadWidth - $KeyWidth - 2) -Align Left } else { $entry.Label }
+        Write-HermesHost $labelText -NoNewline -ForegroundColor $labelColor
+        if ($entry.Note) { Write-HermesHost ('  ' + $entry.Note) -NoNewline -ForegroundColor $muted }
+        if ($isRecommended) { Write-HermesHost ('  ' + $Marker) -NoNewline -ForegroundColor $primary }
+        Write-HermesHost ''
+    }
 }
 
 function Write-ConsoleStatusLine {
@@ -1266,7 +1414,7 @@ function Write-ConsoleStatusLine {
         $parameters.ForegroundColor = if ($resolved -match '^#[0-9A-Fa-f]{6}$') { ConvertTo-NearestConsoleColor -Hex $resolved } else { $resolved }
     }
     Write-Host @parameters
-    $script:HermesStatusLineActive = $true
+    $script:HermesOutput.StatusLineActive = $true
 }
 
 function Clear-ConsoleStatusLine {
@@ -1288,8 +1436,8 @@ function Clear-ConsoleStatusLine {
     [CmdletBinding()]
     param()
 
-    if (-not $script:HermesStatusLineActive) { return }
-    $script:HermesStatusLineActive = $false
+    if (-not $script:HermesOutput.StatusLineActive) { return }
+    $script:HermesOutput.StatusLineActive = $false
     if (-not (Test-HermesLiveOutput)) { return }
     $width = Get-ConsoleWidth -Default 80
     Write-Host ("`r" + (' ' * [Math]::Max(1, $width - 1)) + "`r") -NoNewline

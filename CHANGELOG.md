@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-11-27
+
+### Added
+- `docs/API.md`: the 72 commands and 2 aliases by group, with what each one does, and the internal helpers apart. The
+  test `tests/Unit/Hygiene.Tests.ps1` checks that every exported name is listed.
+- A UTF-8 byte order mark in every script file, which Windows PowerShell 5.1 needs to read them as UTF-8. The same test
+  keeps it there.
+
+### Changed
+- The long functions are split into private helpers that share one state object. `Read-ConsoleSelectionKey` now keeps
+  its view (labels, highlight, marks, filter, colors) in one object and handles each key, draws the page and filters
+  in functions of their own. `Read-ConsoleMenu` reads its entries, runs the arrow-key list and lists the options in
+  separate functions. `Write-ConsoleTable` writes its rows and cells in separate functions; the rows keep the loop that
+  writes each row in one go.
+- The output state is one object, `$script:HermesOutput` (the handler, its quiet mode, the pause while a list is redrawn,
+  the status line and the capture). The default layout is a function, and the Write-Host proxy of
+  `Enable-ConsoleHostRedirect` is local to it. The module has fewer script-scope variables.
+- `Write-ConsoleTable -ReturnLines` takes about 10% longer, since each cell goes through a function. Writing the table to
+  the console is as fast as before.
+
+### Removed
+- `$Global:CassielDevMode` is no longer read. Applications that used it to keep earlier output on screen set
+  `$env:HERMESCONSOLEUI_NOCLEAR = 1` instead; the module names no application.
+
+### Compatibility
+- No command, parameter, alias or output has changed: the public API is the same as in 2.9.0. The test seams
+  (`HermesReadKey`, `HermesInteractiveOverride`, `HermesLiveOverride`, `HermesTrueColorOverride`) are unchanged too.
+
 ## [2.9.0] - 2026-11-27
 
 ### Added

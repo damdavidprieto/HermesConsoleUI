@@ -65,7 +65,7 @@ interactive menu. Each example runs as part of the tests.
 | Themes | `Set-ConsoleTheme`, `Get-ConsoleTheme`, `Get-AvailableTheme`, `Get-UIColor`, `Get-UIIcon`, `Get-UIConfig`, `Initialize-UIConfig` |
 | Localization | `Set-UILocale`, `Get-UILocale`, `Get-AvailableLocale`, `Get-LocalizedString`, `Initialize-Localization` |
 
-`Get-Command -Module HermesConsoleUI` lists them and `Get-Help <command> -Full` documents each one.
+`Get-Command -Module HermesConsoleUI` lists them and `Get-Help <command> -Full` documents each one. [docs/API.md](docs/API.md) lists them by group, with what each one does.
 Commands that return lines (`Show-ConsoleList`, `Write-ConsoleTree`, `Write-ConsoleTable`, `Write-ConsoleChart`,
 `Write-ConsoleBox`, `Write-ConsoleLine`, `Write-ConsoleKeyValue`, `Write-ConsoleGrid`) accept `-ReturnLines`, so
 their output can go inside a panel or a layout column.

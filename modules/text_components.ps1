@@ -1039,8 +1039,8 @@ function Register-ConsoleOutputHandler {
     )
 
     if (-not $PSCmdlet.ShouldProcess('HermesConsoleUI output', 'Register output handler')) { return }
-    $script:HermesOutputHandler = $ScriptBlock
-    $script:HermesOutputQuiet = [bool]$Quiet
+    $script:HermesOutput.Handler = $ScriptBlock
+    $script:HermesOutput.Quiet = [bool]$Quiet
 }
 
 function Unregister-ConsoleOutputHandler {
@@ -1060,6 +1060,6 @@ function Unregister-ConsoleOutputHandler {
     param()
 
     if (-not $PSCmdlet.ShouldProcess('HermesConsoleUI output', 'Remove output handler')) { return }
-    $script:HermesOutputHandler = $null
-    $script:HermesOutputQuiet = $false
+    $script:HermesOutput.Handler = $null
+    $script:HermesOutput.Quiet = $false
 }
